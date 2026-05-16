@@ -26,12 +26,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($result && $result->num_rows === 1) {
         $user = $result->fetch_assoc();
 
+        // Proste porównanie tekstowe (brak hashowania)
         if ($password === $user['password']) {
             session_regenerate_id(true);
             $_SESSION["user_id"] = $user["id"];
             $_SESSION["username"] = $user["username"];
 
-            header("Location: management.php");
+            header("Location: management.php"); // albo inny plik docelowy
             exit();
         } else {
             echo "Nieprawidłowy login lub hasło.";
