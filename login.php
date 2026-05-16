@@ -50,6 +50,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <head>
     <meta charset="UTF-8">
     <title>Logowanie</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 20px; }
+        .err { color: red; margin: 10px 0; }
+        label { display: block; margin-top: 10px; }
+        input, select { width: 100%; padding: 5px; }
+        button { margin-top: 10px; padding: 8px 15px; }
+        table { margin-top: 20px; border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    </style>
 </head>
 <body>
 
@@ -64,8 +73,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <button type="submit">Zaloguj</button>
 
 </form>
-
-<a href="register.php">Utwórz konto</a>
 
 </body>
 </html>
