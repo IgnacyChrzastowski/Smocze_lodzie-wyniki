@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Maj 17, 2026 at 06:19 PM
+-- Generation Time: Maj 17, 2026 at 11:31 PM
 -- Wersja serwera: 10.4.32-MariaDB
 -- Wersja PHP: 8.2.12
 
@@ -20,6 +20,20 @@ SET time_zone = "+00:00";
 --
 -- Database: `smoczelodziewyniki`
 --
+
+-- --------------------------------------------------------
+
+--
+-- Struktura tabeli dla tabeli `druzyny`
+--
+
+CREATE TABLE `druzyny` (
+  `id` int(11) NOT NULL,
+  `nazwa` text NOT NULL,
+  `wynik` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `miejsce` int(11) NOT NULL,
+  `id_wyscigu` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -57,7 +71,7 @@ CREATE TABLE `wyscigi` (
 --
 
 INSERT INTO `wyscigi` (`id`, `id_zawodow`, `nazwa`) VALUES
-(1, 1, 'Wyścig I');
+(5, 5, 'Wyścig I');
 
 -- --------------------------------------------------------
 
@@ -75,11 +89,17 @@ CREATE TABLE `zawody` (
 --
 
 INSERT INTO `zawody` (`id`, `nazwa`) VALUES
-(1, 'test');
+(5, 'cokolwiek');
 
 --
 -- Indeksy dla zrzutów tabel
 --
+
+--
+-- Indeksy dla tabeli `druzyny`
+--
+ALTER TABLE `druzyny`
+  ADD PRIMARY KEY (`id`);
 
 --
 -- Indeksy dla tabeli `users`
@@ -106,6 +126,12 @@ ALTER TABLE `zawody`
 --
 
 --
+-- AUTO_INCREMENT for table `druzyny`
+--
+ALTER TABLE `druzyny`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
@@ -115,13 +141,13 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `wyscigi`
 --
 ALTER TABLE `wyscigi`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `zawody`
 --
 ALTER TABLE `zawody`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- Constraints for dumped tables
