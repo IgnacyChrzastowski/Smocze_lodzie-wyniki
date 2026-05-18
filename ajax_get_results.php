@@ -1,13 +1,8 @@
 <?php
 require_once "config.php";
 
-// Pobierz id zawodów z query string (opcjonalne) LUB z cookies (jeśli nie ma w URL)
-$zawody_id = isset($_GET['zawody_id']) ? (int)$_GET['zawody_id'] : 0;
-
-// Jeśli nie ma w URL, spróbuj z cookies
-if ($zawody_id === 0 && isset($_COOKIE['zawody_prezentacyjne'])) {
-    $zawody_id = (int)$_COOKIE['zawody_prezentacyjne'];
-}
+// Pobierz id zawodów z cookies (ustawiany z management.php)
+$zawody_id = isset($_COOKIE['zawody_prezentacyjne']) ? (int)$_COOKIE['zawody_prezentacyjne'] : 0;
 
 // zapytanie do bazy
 if ($zawody_id > 0) {
@@ -19,12 +14,9 @@ if ($zawody_id > 0) {
         ORDER BY w.id ASC
     ");
 } else {
-    $res = $conn->query("
-        SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z
-        FROM wyscigi w
-        LEFT JOIN zawody z ON w.id_zawodow = z.id
-        ORDER BY w.id ASC
-    ");
+    // Jeśli brak cookie, pokaż informację
+    echo '<div class="card-body"><em>Brak aktywnych zawodów do wyświetlenia. Ustaw zawody z poziomu administracji.</em></div>';
+    exit;
 }
 
 $wyscigi = [];
@@ -51,13 +43,12 @@ if ($res3) {
 
 // HTML output
 if (count($wyscigi) === 0) {
-    echo '<div class="card-body"><em>Brak wyścigów dla wybranego kryterium.</em></div>';
+    echo '<em>Brak wyścigów dla wybranych zawodów.</em>';
 } else {
     foreach ($wyscigi as $w) {
         echo '<div class="card shadow-sm mb-3">';
         echo '<div class="card-header">';
         echo '<strong>' . htmlspecialchars($w['nazwa_w']) . '</strong>';
-        echo ' <small class="text-muted">(' . htmlspecialchars(isset($w['nazwa_z']) ? $w['nazwa_z'] : '—') . ')</small>';
         echo '</div>';
         echo '<div class="card-body">';
 
