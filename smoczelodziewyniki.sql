@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Maj 18, 2026 at 11:48 PM
+-- Generation Time: Maj 19, 2026 at 11:07 PM
 -- Wersja serwera: 10.4.32-MariaDB
 -- Wersja PHP: 8.2.12
 
@@ -32,6 +32,7 @@ CREATE TABLE `druzyny` (
   `nazwa` text NOT NULL,
   `wynik` varchar(16) DEFAULT NULL,
   `miejsce` int(11) NOT NULL,
+  `tor` int(11) NOT NULL,
   `id_wyscigu` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -39,13 +40,13 @@ CREATE TABLE `druzyny` (
 -- Dumping data for table `druzyny`
 --
 
-INSERT INTO `druzyny` (`id`, `nazwa`, `wynik`, `miejsce`, `id_wyscigu`) VALUES
-(1, 'Drużyna I', '12:34,677', 1, 1),
-(2, 'Drużyna II', '23:45,678', 2, 1),
-(3, 'Drużyna III', '34:56,789', 3, 1),
-(4, 'Drużyna I', '12:34,567', 1, 2),
-(5, 'Drużyna II', '2:23,456', 2, 2),
-(6, 'Drużyna III', '34:56,789', 3, 2);
+INSERT INTO `druzyny` (`id`, `nazwa`, `wynik`, `miejsce`, `tor`, `id_wyscigu`) VALUES
+(1, 'Drużyna I', '12:34,677', 1, 0, 1),
+(2, 'Drużyna II', '23:45,678', 2, 0, 1),
+(3, 'Drużyna III', '34:56,789', 3, 0, 1),
+(4, 'Drużyna I', '12:34,567', 1, 0, 2),
+(5, 'Drużyna II', '2:23,456', 2, 0, 2),
+(6, 'Drużyna III', '34:56,789', 3, 0, 2);
 
 -- --------------------------------------------------------
 
@@ -69,6 +70,25 @@ INSERT INTO `users` (`id`, `username`, `password`) VALUES
 -- --------------------------------------------------------
 
 --
+-- Struktura tabeli dla tabeli `ustawienia`
+--
+
+CREATE TABLE `ustawienia` (
+  `id` int(11) NOT NULL,
+  `klucz` varchar(255) NOT NULL,
+  `wartosc` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `ustawienia`
+--
+
+INSERT INTO `ustawienia` (`id`, `klucz`, `wartosc`) VALUES
+(1, 'aktywne_zawody', '1');
+
+-- --------------------------------------------------------
+
+--
 -- Struktura tabeli dla tabeli `wyscigi`
 --
 
@@ -86,7 +106,10 @@ INSERT INTO `wyscigi` (`id`, `id_zawodow`, `nazwa`) VALUES
 (1, 1, 'Wyścig I'),
 (2, 1, 'Wyścig II'),
 (3, 1, 'Wyścig III'),
-(4, 3, 'djhHDgShdgassh');
+(4, 3, 'djhHDgShdgassh'),
+(7, 3, 'Wyścig I'),
+(8, 1, 'fvfdzsc'),
+(9, 1, 'zbfdfd');
 
 -- --------------------------------------------------------
 
@@ -127,6 +150,14 @@ ALTER TABLE `users`
   ADD UNIQUE KEY `username` (`username`);
 
 --
+-- Indeksy dla tabeli `ustawienia`
+--
+ALTER TABLE `ustawienia`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `klucz` (`klucz`),
+  ADD KEY `idx_klucz` (`klucz`);
+
+--
 -- Indeksy dla tabeli `wyscigi`
 --
 ALTER TABLE `wyscigi`
@@ -156,10 +187,16 @@ ALTER TABLE `users`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
+-- AUTO_INCREMENT for table `ustawienia`
+--
+ALTER TABLE `ustawienia`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
 -- AUTO_INCREMENT for table `wyscigi`
 --
 ALTER TABLE `wyscigi`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `zawody`
