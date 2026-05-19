@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Maj 18, 2026 at 08:40 PM
+-- Generation Time: Maj 18, 2026 at 11:48 PM
 -- Wersja serwera: 10.4.32-MariaDB
 -- Wersja PHP: 8.2.12
 
@@ -20,8 +20,6 @@ SET time_zone = "+00:00";
 --
 -- Database: `smoczelodziewyniki`
 --
-CREATE DATABASE IF NOT EXISTS `smoczelodziewyniki` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE `smoczelodziewyniki`;
 
 -- --------------------------------------------------------
 
@@ -29,22 +27,20 @@ USE `smoczelodziewyniki`;
 -- Struktura tabeli dla tabeli `druzyny`
 --
 
-CREATE TABLE IF NOT EXISTS `druzyny` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+CREATE TABLE `druzyny` (
+  `id` int(11) NOT NULL,
   `nazwa` text NOT NULL,
   `wynik` varchar(16) DEFAULT NULL,
   `miejsce` int(11) NOT NULL,
-  `id_wyscigu` int(11) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_id_wyscigu` (`id_wyscigu`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  `id_wyscigu` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `druzyny`
 --
 
 INSERT INTO `druzyny` (`id`, `nazwa`, `wynik`, `miejsce`, `id_wyscigu`) VALUES
-(1, 'Drużyna I', '12:34,678', 1, 1),
+(1, 'Drużyna I', '12:34,677', 1, 1),
 (2, 'Drużyna II', '23:45,678', 2, 1),
 (3, 'Drużyna III', '34:56,789', 3, 1),
 (4, 'Drużyna I', '12:34,567', 1, 2),
@@ -57,13 +53,11 @@ INSERT INTO `druzyny` (`id`, `nazwa`, `wynik`, `miejsce`, `id_wyscigu`) VALUES
 -- Struktura tabeli dla tabeli `users`
 --
 
-CREATE TABLE IF NOT EXISTS `users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+CREATE TABLE `users` (
+  `id` int(11) NOT NULL,
   `username` varchar(50) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `username` (`username`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  `password` varchar(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `users`
@@ -78,13 +72,11 @@ INSERT INTO `users` (`id`, `username`, `password`) VALUES
 -- Struktura tabeli dla tabeli `wyscigi`
 --
 
-CREATE TABLE IF NOT EXISTS `wyscigi` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+CREATE TABLE `wyscigi` (
+  `id` int(11) NOT NULL,
   `id_zawodow` int(11) NOT NULL,
-  `nazwa` text NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_id_zawodow` (`id_zawodow`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+  `nazwa` text NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `wyscigi`
@@ -92,7 +84,9 @@ CREATE TABLE IF NOT EXISTS `wyscigi` (
 
 INSERT INTO `wyscigi` (`id`, `id_zawodow`, `nazwa`) VALUES
 (1, 1, 'Wyścig I'),
-(2, 1, 'Wyścig II');
+(2, 1, 'Wyścig II'),
+(3, 1, 'Wyścig III'),
+(4, 3, 'djhHDgShdgassh');
 
 -- --------------------------------------------------------
 
@@ -100,18 +94,78 @@ INSERT INTO `wyscigi` (`id`, `id_zawodow`, `nazwa`) VALUES
 -- Struktura tabeli dla tabeli `zawody`
 --
 
-CREATE TABLE IF NOT EXISTS `zawody` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `nazwa` text NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+CREATE TABLE `zawody` (
+  `id` int(11) NOT NULL,
+  `nazwa` text NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `zawody`
 --
 
 INSERT INTO `zawody` (`id`, `nazwa`) VALUES
-(1, 'Mistrzostwa Polski');
+(1, 'Mistrzostwa Polski 2026'),
+(3, 'Mistrzostwa Polski 2025'),
+(4, 'W wyciąganiu chuja z wody XD 2026');
+
+--
+-- Indeksy dla zrzutów tabel
+--
+
+--
+-- Indeksy dla tabeli `druzyny`
+--
+ALTER TABLE `druzyny`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_id_wyscigu` (`id_wyscigu`);
+
+--
+-- Indeksy dla tabeli `users`
+--
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `username` (`username`);
+
+--
+-- Indeksy dla tabeli `wyscigi`
+--
+ALTER TABLE `wyscigi`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_id_zawodow` (`id_zawodow`);
+
+--
+-- Indeksy dla tabeli `zawody`
+--
+ALTER TABLE `zawody`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- AUTO_INCREMENT for dumped tables
+--
+
+--
+-- AUTO_INCREMENT for table `druzyny`
+--
+ALTER TABLE `druzyny`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+
+--
+-- AUTO_INCREMENT for table `users`
+--
+ALTER TABLE `users`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `wyscigi`
+--
+ALTER TABLE `wyscigi`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT for table `zawody`
+--
+ALTER TABLE `zawody`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- Constraints for dumped tables
