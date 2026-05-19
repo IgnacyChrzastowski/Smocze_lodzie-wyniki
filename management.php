@@ -1,13 +1,12 @@
 <?php
 session_start();
 
-// zabezpieczenie: tylko zalogowani
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit;
 }
 
-require_once "config.php"; // musi ustawić $conn jako mysqli
+require_once "config.php";
 
 $alert = "";
 
@@ -68,7 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($stmt) {
             $stmt->bind_param("i", $id);
             if ($stmt->execute()) {
-                // jeśli usuwane były zapamiętane cookie odnoszące się do tego id, nie musimy ich usuwać tutaj; użytkownik może ustawić ponownie
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
             } else {
@@ -81,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Dodaj wyścig (wymagane wybranie zawodów)
+// Dodaj wyścig
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_wyscig') {
     $nazwa_w = trim(isset($_POST['nazwa_wyscigu']) ? $_POST['nazwa_wyscigu'] : '');
     $id_z = (int)(isset($_POST['id_zawodow']) ? $_POST['id_zawodow'] : 0);
@@ -153,20 +151,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Dodaj drużynę
+// Dodaj drużynę (z polem tor)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_druzyna') {
     $id_wyscigu = (int)(isset($_POST['id_wyscigu']) ? $_POST['id_wyscigu'] : 0);
     $nazwa = trim(isset($_POST['nazwa_druzyny']) ? $_POST['nazwa_druzyny'] : '');
     $wynik = trim(isset($_POST['wynik_druzyny']) ? $_POST['wynik_druzyny'] : '');
+    $tor = isset($_POST['tor_druzyny']) ? intval($_POST['tor_druzyny']) : null;
+    $tor = ($tor === 0 || $tor === null) ? null : $tor; // treat 0 as null
     $miejsce = isset($_POST['miejsce_druzyny']) ? intval($_POST['miejsce_druzyny']) : 0;
 
     if ($id_wyscigu <= 0 || $nazwa === '' || $miejsce <= 0) {
         $alert = "Podaj nazwę drużyny, poprawne miejsce (>=1) i wybierz wyścig.";
     } else {
         if ($wynik === '') {
-            $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, miejsce, id_wyscigu) VALUES (?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, tor, miejsce, id_wyscigu) VALUES (?, ?, ?, ?)");
             if ($stmt) {
-                $stmt->bind_param("sii", $nazwa, $miejsce, $id_wyscigu);
+                $stmt->bind_param("siii", $nazwa, $tor, $miejsce, $id_wyscigu);
                 if ($stmt->execute()) {
                     header("Location: " . $_SERVER['PHP_SELF']);
                     exit;
@@ -181,9 +181,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if (!preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
                 $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
             } else {
-                $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, wynik, miejsce, id_wyscigu) VALUES (?, ?, ?, ?)");
+                $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, wynik, tor, miejsce, id_wyscigu) VALUES (?, ?, ?, ?, ?)");
                 if ($stmt) {
-                    $stmt->bind_param("ssii", $nazwa, $wynik, $miejsce, $id_wyscigu);
+                    $stmt->bind_param("ssiii", $nazwa, $wynik, $tor, $miejsce, $id_wyscigu);
                     if ($stmt->execute()) {
                         header("Location: " . $_SERVER['PHP_SELF']);
                         exit;
@@ -199,20 +199,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Edytuj drużynę
+// Edytuj drużynę (z polem tor)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_druzyna') {
     $id = (int)(isset($_POST['id_druzyny_edit']) ? $_POST['id_druzyny_edit'] : 0);
     $nazwa = trim(isset($_POST['nazwa_druzyny_edit']) ? $_POST['nazwa_druzyny_edit'] : '');
     $wynik = trim(isset($_POST['wynik_druzyny_edit']) ? $_POST['wynik_druzyny_edit'] : '');
+    $tor = isset($_POST['tor_druzyny_edit']) ? intval($_POST['tor_druzyny_edit']) : null;
+    $tor = ($tor === 0 || $tor === null) ? null : $tor;
     $miejsce = isset($_POST['miejsce_druzyny_edit']) ? intval($_POST['miejsce_druzyny_edit']) : 0;
 
     if ($id <= 0 || $nazwa === '' || $miejsce <= 0) {
         $alert = "Niepoprawne dane przy edycji drużyny.";
     } else {
         if ($wynik === '') {
-            $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = NULL, miejsce = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = NULL, tor = ?, miejsce = ? WHERE id = ?");
             if ($stmt) {
-                $stmt->bind_param("sii", $nazwa, $miejsce, $id);
+                $stmt->bind_param("siii", $nazwa, $tor, $miejsce, $id);
                 if ($stmt->execute()) {
                     header("Location: " . $_SERVER['PHP_SELF']);
                     exit;
@@ -227,9 +229,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if (!preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
                 $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
             } else {
-                $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = ?, miejsce = ? WHERE id = ?");
+                $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = ?, tor = ?, miejsce = ? WHERE id = ?");
                 if ($stmt) {
-                    $stmt->bind_param("ssii", $nazwa, $wynik, $miejsce, $id);
+                    $stmt->bind_param("ssiii", $nazwa, $wynik, $tor, $miejsce, $id);
                     if ($stmt->execute()) {
                         header("Location: " . $_SERVER['PHP_SELF']);
                         exit;
@@ -288,9 +290,9 @@ if ($res2) {
     $res2->free();
 }
 
-// drużyny grupowane po id_wyscigu, sortowane po miejscu
+// drużyny z polem tor
 $druzyny_by_wyscig = [];
-$res3 = $conn->query("SELECT id, nazwa, wynik, miejsce, id_wyscigu FROM druzyny ORDER BY id_wyscigu ASC, miejsce ASC");
+$res3 = $conn->query("SELECT id, nazwa, wynik, tor, miejsce, id_wyscigu FROM druzyny ORDER BY id_wyscigu ASC, miejsce ASC");
 if ($res3) {
     while ($row = $res3->fetch_assoc()) {
         $idw = (int)$row['id_wyscigu'];
@@ -300,7 +302,6 @@ if ($res3) {
     $res3->free();
 }
 
-// cookie: zapamiętane zawody dla formularza (jeżeli istnieje)
 $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE['zawody_formularz'] : 0;
 ?>
 <!DOCTYPE html>
@@ -352,7 +353,7 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             </div>
 
             <div class="card shadow-sm mt-3">
-                <div class="card-header"><strong>Lista zawodów (kliknij, aby zapamiętać wybór dla formularza "Dodaj wyścig")</strong></div>
+                <div class="card-header"><strong>Lista zawodów (kliknij, aby zapamiętać wybór)</strong></div>
                 <div class="card-body p-0">
                     <?php if (empty($zawody)): ?>
                         <div class="p-3">Brak zawodów.</div>
@@ -365,14 +366,8 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                                      data-id="<?php echo (int)$z['id']; ?>">
                                     <div class="zawody-nazwa"><?php echo htmlspecialchars($z['nazwa']); ?></div>
                                     <div class="btn-group">
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-secondary"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#editZawodyModal"
-                                                data-id="<?php echo (int)$z['id']; ?>"
-                                                data-nazwa="<?php echo htmlspecialchars($z['nazwa'], ENT_QUOTES); ?>">
-                                            Edytuj
-                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editZawodyModal"
+                                                data-id="<?php echo (int)$z['id']; ?>" data-nazwa="<?php echo htmlspecialchars($z['nazwa'], ENT_QUOTES); ?>">Edytuj</button>
                                         <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć zawody?');">
                                             <input type="hidden" name="action" value="delete_zawody">
                                             <input type="hidden" name="id_zawody_del" value="<?php echo (int)$z['id']; ?>">
@@ -382,18 +377,17 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                                 </div>
                             <?php endforeach; ?>
                         </div>
-                        <div class="p-2"><small class="text-muted">Kliknięcie zapamięta wybrane zawody (cookie) jako domyślne w formularzu dodawania wyścigu.</small></div>
+
                     <?php endif; ?>
                 </div>
             </div>
         </div>
 
-        <!-- Dodaj wyścig oraz lista wyścigów i drużyn -->
         <div class="col-md-6">
             <div class="card shadow-sm">
                 <div class="card-header"><strong>Dodaj wyścig</strong></div>
                 <div class="card-body">
-                    <form method="post" id="formAddWyscig">
+                    <form method="post">
                         <input type="hidden" name="action" value="add_wyscig">
                         <div class="mb-3">
                             <label class="form-label">Wybierz zawody</label>
@@ -435,13 +429,9 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                                     <td>
                                         <div class="btn-group btn-group-sm">
                                             <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#addDruzynaModal"
-                                                    data-id="<?php echo (int)$w['id']; ?>" data-wyscignazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>">
-                                                Dodaj drużynę
-                                            </button>
+                                                    data-id="<?php echo (int)$w['id']; ?>" data-wyscignazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>">Dodaj drużynę</button>
                                             <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editWyscigModal"
-                                                    data-id="<?php echo (int)$w['id']; ?>" data-nazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>" data-idz="<?php echo (int)$w['id_zawodow']; ?>">
-                                                Edytuj
-                                            </button>
+                                                    data-id="<?php echo (int)$w['id']; ?>" data-nazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>" data-idz="<?php echo (int)$w['id_zawodow']; ?>">Edytuj</button>
                                             <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć wyścig?');">
                                                 <input type="hidden" name="action" value="delete_wyscig">
                                                 <input type="hidden" name="id_wyscigu_del" value="<?php echo (int)$w['id']; ?>">
@@ -459,15 +449,17 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                                             echo '<em>Brak drużyn.</em>';
                                         } else {
                                             echo '<table class="table table-sm mb-0">';
-                                            echo '<thead><tr><th style="width:80px">Miejsce</th><th>Nazwa</th><th>Wynik</th></tr></thead><tbody>';
+                                            echo '<thead><tr><th style="width:60px">Miejsce</th><th>Nazwa</th><th style="width:60px">Tor</th><th style="width:120px">Wynik</th></tr></thead><tbody>';
                                             foreach ($teams as $t) {
                                                 $team_id = (int)$t['id'];
                                                 $wynik = $t['wynik'];
+                                                $tor = $t['tor'];
                                                 $miejsce = (int)$t['miejsce'];
                                                 $nazwa_t = htmlspecialchars($t['nazwa']);
-                                                echo '<tr class="team-editable" data-team-id="' . $team_id . '" data-team-name="' . $nazwa_t . '" data-team-wynik="' . htmlspecialchars($wynik) . '" data-team-miejsce="' . $miejsce . '" data-team-wyscig="' . (int)$t['id_wyscigu'] . '">';
+                                                echo '<tr class="team-editable" data-team-id="' . $team_id . '" data-team-name="' . $nazwa_t . '" data-team-wynik="' . htmlspecialchars($wynik) . '" data-team-tor="' . htmlspecialchars($tor) . '" data-team-miejsce="' . $miejsce . '" data-team-wyscig="' . (int)$t['id_wyscigu'] . '">';
                                                 echo '<td>' . $miejsce . '</td>';
                                                 echo '<td>' . $nazwa_t . '</td>';
+                                                echo '<td>' . ($tor !== null && $tor !== '' ? htmlspecialchars($tor) : '—') . '</td>';
                                                 echo '<td>' . ($wynik !== null && $wynik !== '' ? htmlspecialchars($wynik) : '—') . '</td>';
                                                 echo '</tr>';
                                             }
@@ -488,7 +480,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
 </div>
 
 <!-- Modale -->
-<!-- editZawodyModal -->
 <div class="modal fade" id="editZawodyModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">
             <input type="hidden" name="action" value="edit_zawody">
             <input type="hidden" name="id_zawody" id="editZawodyId" value="">
@@ -497,7 +488,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anuluj</button><button class="btn btn-primary" type="submit">Zapisz</button></div>
         </form></div></div>
 
-<!-- editWyscigModal -->
 <div class="modal fade" id="editWyscigModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">
             <input type="hidden" name="action" value="edit_wyscig">
             <input type="hidden" name="id_wyscigu_edit" id="editWyscigId" value="">
@@ -516,13 +506,13 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anuluj</button><button class="btn btn-primary" type="submit">Zapisz</button></div>
         </form></div></div>
 
-<!-- addDruzynaModal -->
 <div class="modal fade" id="addDruzynaModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">
             <input type="hidden" name="action" value="add_druzyna">
             <input type="hidden" name="id_wyscigu" id="addDruzynaWyscigId" value="">
             <div class="modal-header"><h5 class="modal-title">Dodaj drużynę</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
                 <div class="mb-3"><label class="form-label">Nazwa drużyny</label><input type="text" name="nazwa_druzyny" id="addDruzynaNazwa" class="form-control" required></div>
+                <div class="mb-3"><label class="form-label">Tor (opcjonalnie)</label><input type="number" name="tor_druzyny" id="addDruzynaTor" class="form-control" min="1"><div class="form-text">Numer toru/ścieżki (jeśli dotyczy).</div></div>
                 <div class="mb-3"><label class="form-label">Wynik (opcjonalnie)</label><input type="text" name="wynik_druzyny" id="addDruzynaWynik" class="form-control" placeholder="MM:SS,mmm" pattern="\d{1,2}:\d{2},\d{3}"><div class="form-text">Format: MM:SS,mmm</div></div>
                 <div class="mb-3"><label class="form-label">Miejsce</label><input type="number" name="miejsce_druzyny" id="addDruzynaMiejsce" class="form-control" min="1" required></div>
                 <div class="mb-2"><small class="text-muted">Wyścig: <span id="addDruzynaWyscigName"></span></small></div>
@@ -530,7 +520,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anuluj</button><button class="btn btn-primary" type="submit">Dodaj drużynę</button></div>
         </form></div></div>
 
-<!-- editDruzynaModal -->
 <div class="modal fade" id="editDruzynaModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content">
             <form method="post" id="formEditDruzyna">
                 <input type="hidden" name="action" value="edit_druzyna">
@@ -538,6 +527,7 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                 <div class="modal-header"><h5 class="modal-title">Edytuj drużynę</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                     <div class="mb-3"><label class="form-label">Nazwa</label><input type="text" name="nazwa_druzyny_edit" id="editDruzynaNazwa" class="form-control" required></div>
+                    <div class="mb-3"><label class="form-label">Tor (opcjonalnie)</label><input type="number" name="tor_druzyny_edit" id="editDruzynaTor" class="form-control" min="1"><div class="form-text">Numer toru/ścieżki (jeśli dotyczy).</div></div>
                     <div class="mb-3"><label class="form-label">Wynik (opcjonalnie)</label><input type="text" name="wynik_druzyny_edit" id="editDruzynaWynik" class="form-control" placeholder="MM:SS,mmm" pattern="\d{1,2}:\d{2},\d{3}"><div class="form-text">Pozostaw puste aby usunąć wynik.</div></div>
                     <div class="mb-3"><label class="form-label">Miejsce</label><input type="number" name="miejsce_druzyny_edit" id="editDruzynaMiejsce" class="form-control" min="1" required></div>
                     <div class="mb-2"><small class="text-muted">Wyścig: <span id="editDruzynaWyscigName"></span></small></div>
@@ -553,7 +543,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    /* helper cookie */
     function setCookie(name, value, days) {
         var expires = "";
         if (days) {
@@ -573,7 +562,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
         return null;
     }
 
-    /* modale fill */
     var editZawodyModal = document.getElementById('editZawodyModal');
     if (editZawodyModal) {
         editZawodyModal.addEventListener('show.bs.modal', function (event) {
@@ -602,12 +590,12 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             document.getElementById('addDruzynaWyscigId').value = id;
             document.getElementById('addDruzynaWyscigName').textContent = nazwa;
             document.getElementById('addDruzynaNazwa').value = '';
+            document.getElementById('addDruzynaTor').value = '';
             document.getElementById('addDruzynaWynik').value = '';
             document.getElementById('addDruzynaMiejsce').value = '';
         });
     }
 
-    /* zapamiętanie wyboru zawodów: kliknięcie elementu listy zapisuje cookie */
     (function(){
         const zawodyItems = document.querySelectorAll('.zawody-item');
         const selectZawody = document.getElementById('selectIdZawodow');
@@ -629,7 +617,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             it.addEventListener('click', function(){
                 const id = this.dataset.id;
                 if (this.classList.contains('active')) {
-                    // odznacz i usuń cookie
                     clearSelection();
                     setCookie('zawody_formularz', '', -1);
                 } else {
@@ -638,23 +625,23 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             });
         });
 
-        // inicjalizacja: jeżeli cookie istnieje, ustaw aktywny element i select (nie zapisujemy ponownie)
         var cookieVal = getCookie('zawody_formularz');
         if (cookieVal && cookieVal !== '') {
             var el = document.querySelector('.zawody-item[data-id="' + cookieVal + '"]');
             if (el) selectById(cookieVal, false);
         }
 
-        // obsługa edycji drużyn: kliknięcie wiersza
         document.addEventListener('click', function(e){
             var row = e.target.closest('.team-editable');
             if (!row) return;
             var id = row.getAttribute('data-team-id');
             var name = row.getAttribute('data-team-name') || '';
             var wynik = row.getAttribute('data-team-wynik') || '';
+            var tor = row.getAttribute('data-team-tor') || '';
             var miejsce = row.getAttribute('data-team-miejsce') || '';
             document.getElementById('editDruzynaId').value = id;
             document.getElementById('editDruzynaNazwa').value = name;
+            document.getElementById('editDruzynaTor').value = tor;
             document.getElementById('editDruzynaWynik').value = wynik;
             document.getElementById('editDruzynaMiejsce').value = miejsce;
             document.getElementById('editDruzynaWyscigName').textContent = '';
@@ -663,7 +650,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             modal.show();
         });
 
-        // usuwanie drużyny z modala
         var btnDel = document.getElementById('btnDeleteDruzyna');
         if (btnDel) {
             btnDel.addEventListener('click', function(){
