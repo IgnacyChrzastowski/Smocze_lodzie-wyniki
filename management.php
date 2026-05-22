@@ -12,6 +12,29 @@ $alert = "";
 
 // ---------------------- HANDLERY POST ----------------------------
 
+// Handler dla zmiany ustawień prezentacji (zapis do tabeli ustawienia)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'ustaw_prezentacje') {
+    $zawody_id = (int)(isset($_POST['zawody_prezentacyjne']) ? $_POST['zawody_prezentacyjne'] : 0);
+    if ($zawody_id <= 0) {
+        $alert = "Wybierz poprawne zawody.";
+    } else {
+        $stmt = $conn->prepare("INSERT INTO ustawienia (`klucz`, `wartosc`) VALUES (?, ?) ON DUPLICATE KEY UPDATE wartosc = VALUES(wartosc)");
+        if ($stmt) {
+            $klucz = 'aktywne_zawody';
+            $wartosc = (string)$zawody_id;
+            $stmt->bind_param("ss", $klucz, $wartosc);
+            if ($stmt->execute()) {
+                $alert = "Ustawienia zapisane.";
+            } else {
+                $alert = "Błąd zapisu ustawień: " . $conn->error;
+            }
+            $stmt->close();
+        } else {
+            $alert = "Błąd przygotowania zapytania: " . $conn->error;
+        }
+    }
+}
+
 // Dodaj nowe zawody
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_zawody') {
     $nazwa = trim(isset($_POST['nazwa_zawodow']) ? $_POST['nazwa_zawodow'] : '');
@@ -151,23 +174,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Dodaj drużynę (z polem tor)
+// ---------------------- HELPER: przelicz miejsca w wyścigu ----------------------------
+// Konwertuje wynik MM:SS,mmm na milisekundy (do sortowania)
+function wynik_na_ms(string $wynik): int {
+    if (!preg_match('/^(\d{1,2}):(\d{2}),(\d{3})$/', $wynik, $m)) return PHP_INT_MAX;
+    return ((int)$m[1] * 60000) + ((int)$m[2] * 1000) + (int)$m[3];
+}
+
+// Po każdej zmianie drużyny przeliczamy miejsca dla całego wyścigu:
+// - drużyny z wynikiem sortowane rosnąco po czasie (1, 2, 3, ...)
+// - drużyny bez wyniku dostają miejsca za nimi (kolejność wg ID)
+function przelicz_miejsca(mysqli $conn, int $id_wyscigu): void {
+    $res = $conn->query("SELECT id, wynik FROM druzyny WHERE id_wyscigu = " . $id_wyscigu . " ORDER BY id ASC");
+    if (!$res) return;
+
+    $z_wynikiem = [];
+    $bez_wyniku = [];
+    while ($r = $res->fetch_assoc()) {
+        if ($r['wynik'] !== null && $r['wynik'] !== '') {
+            $z_wynikiem[] = $r;
+        } else {
+            $bez_wyniku[] = $r;
+        }
+    }
+    $res->free();
+
+    usort($z_wynikiem, function($a, $b) {
+        return wynik_na_ms($a['wynik']) <=> wynik_na_ms($b['wynik']);
+    });
+
+    $miejsce = 1;
+    $upd = $conn->prepare("UPDATE druzyny SET miejsce = ? WHERE id = ?");
+    if (!$upd) return;
+
+    foreach ($z_wynikiem as $d) {
+        $upd->bind_param("ii", $miejsce, $d['id']);
+        $upd->execute();
+        $miejsce++;
+    }
+    foreach ($bez_wyniku as $d) {
+        $upd->bind_param("ii", $miejsce, $d['id']);
+        $upd->execute();
+        $miejsce++;
+    }
+    $upd->close();
+}
+
+// Dodaj drużynę (miejsce obliczane automatycznie)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_druzyna') {
     $id_wyscigu = (int)(isset($_POST['id_wyscigu']) ? $_POST['id_wyscigu'] : 0);
     $nazwa = trim(isset($_POST['nazwa_druzyny']) ? $_POST['nazwa_druzyny'] : '');
     $wynik = trim(isset($_POST['wynik_druzyny']) ? $_POST['wynik_druzyny'] : '');
     $tor = isset($_POST['tor_druzyny']) ? intval($_POST['tor_druzyny']) : null;
-    $tor = ($tor === 0 || $tor === null) ? null : $tor; // treat 0 as null
-    $miejsce = isset($_POST['miejsce_druzyny']) ? intval($_POST['miejsce_druzyny']) : 0;
+    $tor = ($tor === 0 || $tor === null) ? null : $tor;
 
-    if ($id_wyscigu <= 0 || $nazwa === '' || $miejsce <= 0) {
-        $alert = "Podaj nazwę drużyny, poprawne miejsce (>=1) i wybierz wyścig.";
+    if ($id_wyscigu <= 0 || $nazwa === '') {
+        $alert = "Podaj nazwę drużyny i wybierz wyścig.";
+    } elseif ($wynik !== '' && !preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
+        $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
     } else {
+        // Wstaw z miejscem = 0, zaraz przelicz
+        $miejsce_tmp = 0;
         if ($wynik === '') {
             $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, tor, miejsce, id_wyscigu) VALUES (?, ?, ?, ?)");
             if ($stmt) {
-                $stmt->bind_param("siii", $nazwa, $tor, $miejsce, $id_wyscigu);
+                $stmt->bind_param("siii", $nazwa, $tor, $miejsce_tmp, $id_wyscigu);
                 if ($stmt->execute()) {
+                    przelicz_miejsca($conn, $id_wyscigu);
                     header("Location: " . $_SERVER['PHP_SELF']);
                     exit;
                 } else {
@@ -178,44 +251,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $alert = "Błąd przygotowania zapytania: " . $conn->error;
             }
         } else {
-            if (!preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
-                $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
-            } else {
-                $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, wynik, tor, miejsce, id_wyscigu) VALUES (?, ?, ?, ?, ?)");
-                if ($stmt) {
-                    $stmt->bind_param("ssiii", $nazwa, $wynik, $tor, $miejsce, $id_wyscigu);
-                    if ($stmt->execute()) {
-                        header("Location: " . $_SERVER['PHP_SELF']);
-                        exit;
-                    } else {
-                        $alert = "Błąd zapisu drużyny: " . $conn->error;
-                    }
-                    $stmt->close();
+            $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, wynik, tor, miejsce, id_wyscigu) VALUES (?, ?, ?, ?, ?)");
+            if ($stmt) {
+                $stmt->bind_param("ssiii", $nazwa, $wynik, $tor, $miejsce_tmp, $id_wyscigu);
+                if ($stmt->execute()) {
+                    przelicz_miejsca($conn, $id_wyscigu);
+                    header("Location: " . $_SERVER['PHP_SELF']);
+                    exit;
                 } else {
-                    $alert = "Błąd przygotowania zapytania: " . $conn->error;
+                    $alert = "Błąd zapisu drużyny: " . $conn->error;
                 }
+                $stmt->close();
+            } else {
+                $alert = "Błąd przygotowania zapytania: " . $conn->error;
             }
         }
     }
 }
 
-// Edytuj drużynę (z polem tor)
+// Edytuj drużynę (miejsce obliczane automatycznie)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_druzyna') {
     $id = (int)(isset($_POST['id_druzyny_edit']) ? $_POST['id_druzyny_edit'] : 0);
     $nazwa = trim(isset($_POST['nazwa_druzyny_edit']) ? $_POST['nazwa_druzyny_edit'] : '');
     $wynik = trim(isset($_POST['wynik_druzyny_edit']) ? $_POST['wynik_druzyny_edit'] : '');
     $tor = isset($_POST['tor_druzyny_edit']) ? intval($_POST['tor_druzyny_edit']) : null;
     $tor = ($tor === 0 || $tor === null) ? null : $tor;
-    $miejsce = isset($_POST['miejsce_druzyny_edit']) ? intval($_POST['miejsce_druzyny_edit']) : 0;
 
-    if ($id <= 0 || $nazwa === '' || $miejsce <= 0) {
+    if ($id <= 0 || $nazwa === '') {
         $alert = "Niepoprawne dane przy edycji drużyny.";
+    } elseif ($wynik !== '' && !preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
+        $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
     } else {
+        // Pobierz id_wyscigu tej drużyny
+        $res_id = $conn->query("SELECT id_wyscigu FROM druzyny WHERE id = " . $id . " LIMIT 1");
+        $id_wyscigu_tej = 0;
+        if ($res_id && $r_id = $res_id->fetch_assoc()) {
+            $id_wyscigu_tej = (int)$r_id['id_wyscigu'];
+            $res_id->free();
+        }
+
         if ($wynik === '') {
-            $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = NULL, tor = ?, miejsce = ? WHERE id = ?");
+            $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = NULL, tor = ? WHERE id = ?");
             if ($stmt) {
-                $stmt->bind_param("siii", $nazwa, $tor, $miejsce, $id);
+                $stmt->bind_param("sii", $nazwa, $tor, $id);
                 if ($stmt->execute()) {
+                    if ($id_wyscigu_tej > 0) przelicz_miejsca($conn, $id_wyscigu_tej);
                     header("Location: " . $_SERVER['PHP_SELF']);
                     exit;
                 } else {
@@ -226,22 +306,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $alert = "Błąd przygotowania zapytania: " . $conn->error;
             }
         } else {
-            if (!preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
-                $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
-            } else {
-                $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = ?, tor = ?, miejsce = ? WHERE id = ?");
-                if ($stmt) {
-                    $stmt->bind_param("ssiii", $nazwa, $wynik, $tor, $miejsce, $id);
-                    if ($stmt->execute()) {
-                        header("Location: " . $_SERVER['PHP_SELF']);
-                        exit;
-                    } else {
-                        $alert = "Błąd aktualizacji drużyny: " . $conn->error;
-                    }
-                    $stmt->close();
+            $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = ?, tor = ? WHERE id = ?");
+            if ($stmt) {
+                $stmt->bind_param("ssii", $nazwa, $wynik, $tor, $id);
+                if ($stmt->execute()) {
+                    if ($id_wyscigu_tej > 0) przelicz_miejsca($conn, $id_wyscigu_tej);
+                    header("Location: " . $_SERVER['PHP_SELF']);
+                    exit;
                 } else {
-                    $alert = "Błąd przygotowania zapytania: " . $conn->error;
+                    $alert = "Błąd aktualizacji drużyny: " . $conn->error;
                 }
+                $stmt->close();
+            } else {
+                $alert = "Błąd przygotowania zapytania: " . $conn->error;
             }
         }
     }
@@ -278,19 +355,16 @@ if ($res) {
     $res->free();
 }
 
-$wyscigi = [];
-$res2 = $conn->query("
-    SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z
-    FROM wyscigi w
-    LEFT JOIN zawody z ON w.id_zawodow = z.id
-    ORDER BY w.id ASC
-");
-if ($res2) {
-    while ($r = $res2->fetch_assoc()) $wyscigi[] = $r;
-    $res2->free();
+// pobierz ustawienia prezentacyjne (z bazy) aby ustawić select w sekcji ustawień
+$aktywne_zawody = 0;
+$res_ust = $conn->query("SELECT wartosc FROM ustawienia WHERE klucz = 'aktywne_zawody' LIMIT 1");
+if ($res_ust && $res_ust->num_rows > 0) {
+    $row_ust = $res_ust->fetch_assoc();
+    $aktywne_zawody = (int)$row_ust['wartosc'];
+    $res_ust->free();
 }
 
-// drużyny z polem tor
+// drużyny z polem tor (wszystkie)
 $druzyny_by_wyscig = [];
 $res3 = $conn->query("SELECT id, nazwa, wynik, tor, miejsce, id_wyscigu FROM druzyny ORDER BY id_wyscigu ASC, miejsce ASC");
 if ($res3) {
@@ -302,7 +376,26 @@ if ($res3) {
     $res3->free();
 }
 
+// pobierz wartość cookie używaną do filtrowania formularza (management)
 $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE['zawody_formularz'] : 0;
+
+// Pobierz wyścigi — FILTRUJEMY jeśli istnieje cookie $selected_zawody_formularz
+$wyscigi = [];
+$where = '';
+if (!empty($selected_zawody_formularz) && (int)$selected_zawody_formularz > 0) {
+    $where = ' WHERE w.id_zawodow = ' . (int)$selected_zawody_formularz;
+}
+$res2 = $conn->query("
+    SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z
+    FROM wyscigi w
+    LEFT JOIN zawody z ON w.id_zawodow = z.id
+    $where
+    ORDER BY w.id DESC
+");
+if ($res2) {
+    while ($r = $res2->fetch_assoc()) $wyscigi[] = $r;
+    $res2->free();
+}
 ?>
 <!DOCTYPE html>
 <html lang="pl">
@@ -337,6 +430,37 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
     <?php endif; ?>
 
     <div class="row gy-4">
+        <!-- USTAWIENIA STRONY PREZENTACYJNEJ -->
+        <div class="col-12">
+            <div class="card shadow-sm border-info">
+                <div class="card-header bg-info text-white"><strong>⚙️ Ustawienia strony prezentacyjnej</strong></div>
+                <div class="card-body">
+                    <form method="post">
+                        <input type="hidden" name="action" value="ustaw_prezentacje">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label"><strong>Wybierz zawody do wyświetlania:</strong></label>
+                                <select name="zawody_prezentacyjne" class="form-select" required>
+                                    <option value="">-- wybierz --</option>
+                                    <?php foreach ($zawody as $z): ?>
+                                        <option value="<?php echo (int)$z['id']; ?>" <?php echo ($aktywne_zawody === (int)$z['id']) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($z['nazwa']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <div style="padding-top: 32px;">
+                                    <button type="submit" class="btn btn-info">Zastosuj ustawienia</button>
+                                    <small class="text-muted ms-2">Zmiana będzie widoczna na stronie index.php po odświeżeniu.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <div class="col-md-6">
             <div class="card shadow-sm">
                 <div class="card-header"><strong>Dodaj nowe zawody</strong></div>
@@ -366,8 +490,9 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                                      data-id="<?php echo (int)$z['id']; ?>">
                                     <div class="zawody-nazwa"><?php echo htmlspecialchars($z['nazwa']); ?></div>
                                     <div class="btn-group">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editZawodyModal"
-                                                data-id="<?php echo (int)$z['id']; ?>" data-nazwa="<?php echo htmlspecialchars($z['nazwa'], ENT_QUOTES); ?>">Edytuj</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary edit-zawody-btn"
+                                                data-id="<?php echo (int)$z['id']; ?>"
+                                                data-nazwa="<?php echo htmlspecialchars($z['nazwa'], ENT_QUOTES); ?>">Edytuj</button>
                                         <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć zawody?');">
                                             <input type="hidden" name="action" value="delete_zawody">
                                             <input type="hidden" name="id_zawody_del" value="<?php echo (int)$z['id']; ?>">
@@ -377,7 +502,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                                 </div>
                             <?php endforeach; ?>
                         </div>
-
                     <?php endif; ?>
                 </div>
             </div>
@@ -399,7 +523,7 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                                     </option>
                                 <?php endforeach; ?>
                             </select>
-                            <div class="form-text">Domyślny wybór może być zapamiętany przez kliknięcie zawody po lewej.</div>
+                            <div class="form-text">Kliknij zawody po lewej, aby ustawić domyślny wybór formularza.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Nazwa wyścigu</label>
@@ -418,12 +542,12 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
                     <?php else: ?>
                         <table class="table mb-0">
                             <thead>
-                            <tr><th>ID</th><th>Wyścig</th><th>Zawody</th><th>Akcje</th></tr>
+                            <tr><th style="width:45px">#</th><th>Wyścig</th><th>Zawody</th><th>Akcje</th></tr>
                             </thead>
                             <tbody>
                             <?php foreach ($wyscigi as $w): ?>
                                 <tr class="wyscig-row" data-id="<?php echo (int)$w['id']; ?>" data-zawody="<?php echo (int)$w['id_zawodow']; ?>">
-                                    <td><?php echo (int)$w['id']; ?></td>
+                                    <td class="text-muted small"><?php echo (int)$w['id']; ?></td>
                                     <td><?php echo htmlspecialchars($w['nazwa_w']); ?></td>
                                     <td><?php echo htmlspecialchars(isset($w['nazwa_z']) ? $w['nazwa_z'] : '—'); ?></td>
                                     <td>
@@ -479,146 +603,308 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
     </div>
 </div>
 
-<!-- Modale -->
-<div class="modal fade" id="editZawodyModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">
-            <input type="hidden" name="action" value="edit_zawody">
-            <input type="hidden" name="id_zawody" id="editZawodyId" value="">
-            <div class="modal-header"><h5 class="modal-title">Edytuj zawody</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body"><div class="mb-3"><label class="form-label">Nazwa</label><input type="text" name="nazwa_zawodow_edit" id="editZawodyNazwa" class="form-control" required></div></div>
-            <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anuluj</button><button class="btn btn-primary" type="submit">Zapisz</button></div>
-        </form></div></div>
+<!-- ==================== MODALE ==================== -->
 
-<div class="modal fade" id="editWyscigModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">
-            <input type="hidden" name="action" value="edit_wyscig">
-            <input type="hidden" name="id_wyscigu_edit" id="editWyscigId" value="">
-            <div class="modal-header"><h5 class="modal-title">Edytuj wyścig</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body">
-                <div class="mb-3"><label class="form-label">Nazwa wyścigu</label><input type="text" name="nazwa_wyscigu_edit" id="editWyscigNazwa" class="form-control" required></div>
-                <div class="mb-3"><label class="form-label">Zawody</label>
-                    <select name="id_zawodow_edit" id="editWyscigZawody" class="form-select" required>
-                        <option value="">-- wybierz --</option>
-                        <?php foreach ($zawody as $z): ?>
-                            <option value="<?php echo (int)$z['id']; ?>"><?php echo htmlspecialchars($z['nazwa']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+<!-- Modal: Edytuj zawody -->
+<div class="modal fade" id="editZawodyModal" tabindex="-1" aria-labelledby="editZawodyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editZawodyModalLabel">Edytuj zawody</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
             </div>
-            <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anuluj</button><button class="btn btn-primary" type="submit">Zapisz</button></div>
-        </form></div></div>
-
-<div class="modal fade" id="addDruzynaModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form method="post" class="modal-content">
-            <input type="hidden" name="action" value="add_druzyna">
-            <input type="hidden" name="id_wyscigu" id="addDruzynaWyscigId" value="">
-            <div class="modal-header"><h5 class="modal-title">Dodaj drużynę</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-            <div class="modal-body">
-                <div class="mb-3"><label class="form-label">Nazwa drużyny</label><input type="text" name="nazwa_druzyny" id="addDruzynaNazwa" class="form-control" required></div>
-                <div class="mb-3"><label class="form-label">Tor (opcjonalnie)</label><input type="number" name="tor_druzyny" id="addDruzynaTor" class="form-control" min="1"><div class="form-text">Numer toru/ścieżki (jeśli dotyczy).</div></div>
-                <div class="mb-3"><label class="form-label">Wynik (opcjonalnie)</label><input type="text" name="wynik_druzyny" id="addDruzynaWynik" class="form-control" placeholder="MM:SS,mmm" pattern="\d{1,2}:\d{2},\d{3}"><div class="form-text">Format: MM:SS,mmm</div></div>
-                <div class="mb-3"><label class="form-label">Miejsce</label><input type="number" name="miejsce_druzyny" id="addDruzynaMiejsce" class="form-control" min="1" required></div>
-                <div class="mb-2"><small class="text-muted">Wyścig: <span id="addDruzynaWyscigName"></span></small></div>
-            </div>
-            <div class="modal-footer"><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Anuluj</button><button class="btn btn-primary" type="submit">Dodaj drużynę</button></div>
-        </form></div></div>
-
-<div class="modal fade" id="editDruzynaModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><div class="modal-content">
-            <form method="post" id="formEditDruzyna">
-                <input type="hidden" name="action" value="edit_druzyna">
-                <input type="hidden" name="id_druzyny_edit" id="editDruzynaId" value="">
-                <div class="modal-header"><h5 class="modal-title">Edytuj drużynę</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="post">
+                <input type="hidden" name="action" value="edit_zawody">
+                <input type="hidden" name="id_zawody" id="editZawodyId">
                 <div class="modal-body">
-                    <div class="mb-3"><label class="form-label">Nazwa</label><input type="text" name="nazwa_druzyny_edit" id="editDruzynaNazwa" class="form-control" required></div>
-                    <div class="mb-3"><label class="form-label">Tor (opcjonalnie)</label><input type="number" name="tor_druzyny_edit" id="editDruzynaTor" class="form-control" min="1"><div class="form-text">Numer toru/ścieżki (jeśli dotyczy).</div></div>
-                    <div class="mb-3"><label class="form-label">Wynik (opcjonalnie)</label><input type="text" name="wynik_druzyny_edit" id="editDruzynaWynik" class="form-control" placeholder="MM:SS,mmm" pattern="\d{1,2}:\d{2},\d{3}"><div class="form-text">Pozostaw puste aby usunąć wynik.</div></div>
-                    <div class="mb-3"><label class="form-label">Miejsce</label><input type="number" name="miejsce_druzyny_edit" id="editDruzynaMiejsce" class="form-control" min="1" required></div>
-                    <div class="mb-2"><small class="text-muted">Wyścig: <span id="editDruzynaWyscigName"></span></small></div>
+                    <div class="mb-3">
+                        <label class="form-label">Nazwa zawodów</label>
+                        <input type="text" name="nazwa_zawodow_edit" id="editZawodyNazwa" class="form-control" required>
+                    </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-danger me-auto" id="btnDeleteDruzyna">Usuń drużynę</button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
                     <button type="submit" class="btn btn-primary">Zapisz</button>
                 </div>
             </form>
-            <form method="post" id="formDeleteDruzyna" style="display:none;"><input type="hidden" name="action" value="delete_druzyna"><input type="hidden" name="id_druzyny_del" id="deleteDruzynaId" value=""></form>
-        </div></div></div>
+        </div>
+    </div>
+</div>
 
+<!-- Modal: Edytuj wyścig -->
+<div class="modal fade" id="editWyscigModal" tabindex="-1" aria-labelledby="editWyscigModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editWyscigModalLabel">Edytuj wyścig</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <form method="post">
+                <input type="hidden" name="action" value="edit_wyscig">
+                <input type="hidden" name="id_wyscigu_edit" id="editWyscigId">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Zawody</label>
+                        <select name="id_zawodow_edit" id="editWyscigZawody" class="form-select" required>
+                            <?php foreach ($zawody as $z): ?>
+                                <option value="<?php echo (int)$z['id']; ?>"><?php echo htmlspecialchars($z['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nazwa wyścigu</label>
+                        <input type="text" name="nazwa_wyscigu_edit" id="editWyscigNazwa" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-primary">Zapisz</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Dodaj drużynę -->
+<div class="modal fade" id="addDruzynaModal" tabindex="-1" aria-labelledby="addDruzynaModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addDruzynaModalLabel">Dodaj drużynę do: <span id="addDruzynaWyscigName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <form method="post">
+                <input type="hidden" name="action" value="add_druzyna">
+                <input type="hidden" name="id_wyscigu" id="addDruzynaWyscigId">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nazwa drużyny</label>
+                        <input type="text" name="nazwa_druzyny" id="addDruzynaNazwa" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tor</label>
+                        <input type="number" name="tor_druzyny" id="addDruzynaTor" class="form-control" min="1" placeholder="(opcjonalnie)">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Wynik <span class="text-muted">(MM:SS,mmm, np. 1:23,456)</span></label>
+                        <input type="text" name="wynik_druzyny" id="addDruzynaWynik" class="form-control" placeholder="np. 1:23,456">
+                        <div id="addWynikFeedback" class="form-text"></div>
+                    </div>
+                    <div class="alert alert-info py-2 px-3 mb-0" style="font-size:0.9rem;">
+                        🏅 Miejsce zostanie przydzielone automatycznie na podstawie czasu.<br>
+                        Drużyny bez wyniku trafiają na koniec listy.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-success">Dodaj drużynę</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edytuj drużynę -->
+<div class="modal fade" id="editDruzynaModal" tabindex="-1" aria-labelledby="editDruzynaModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editDruzynaModalLabel">Edytuj drużynę</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <form method="post" id="formEditDruzyna">
+                <input type="hidden" name="action" value="edit_druzyna">
+                <input type="hidden" name="id_druzyny_edit" id="editDruzynaId">
+                <div class="modal-body">
+                    <p class="text-muted small mb-3" id="editDruzynaWyscigName"></p>
+                    <div class="mb-3">
+                        <label class="form-label">Nazwa drużyny</label>
+                        <input type="text" name="nazwa_druzyny_edit" id="editDruzynaNazwa" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tor</label>
+                        <input type="number" name="tor_druzyny_edit" id="editDruzynaTor" class="form-control" min="1" placeholder="(opcjonalnie)">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Wynik <span class="text-muted">(MM:SS,mmm, np. 1:23,456)</span></label>
+                        <input type="text" name="wynik_druzyny_edit" id="editDruzynaWynik" class="form-control" placeholder="(opcjonalnie)">
+                        <div id="editWynikFeedback" class="form-text"></div>
+                    </div>
+                    <div class="alert alert-info py-2 px-3 mb-0" style="font-size:0.9rem;">
+                        🏅 Miejsce zostanie przeliczone automatycznie po zapisaniu.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger me-auto" id="btnDeleteDruzyna">Usuń drużynę</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-primary">Zapisz zmiany</button>
+                </div>
+            </form>
+            <!-- Ukryty formularz do usuwania -->
+            <form method="post" id="formDeleteDruzyna" style="display:none;">
+                <input type="hidden" name="action" value="delete_druzyna">
+                <input type="hidden" name="id_druzyny_del" id="deleteDruzynaId">
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== SKRYPTY ==================== -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     function setCookie(name, value, days) {
         var expires = "";
         if (days) {
             var date = new Date();
-            date.setTime(date.getTime() + (days*24*60*60*1000));
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
             expires = "; expires=" + date.toUTCString();
         }
         document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/";
     }
+
     function getCookie(name) {
         var nameEQ = name + "=";
         var ca = document.cookie.split(';');
-        for(var i=0;i < ca.length;i++) {
+        for (var i = 0; i < ca.length; i++) {
             var c = ca[i].trim();
             if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length));
         }
         return null;
     }
 
-    var editZawodyModal = document.getElementById('editZawodyModal');
-    if (editZawodyModal) {
-        editZawodyModal.addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            document.getElementById('editZawodyId').value = button.getAttribute('data-id');
-            document.getElementById('editZawodyNazwa').value = button.getAttribute('data-nazwa');
-        });
-    }
-    var editWyscigModal = document.getElementById('editWyscigModal');
-    if (editWyscigModal) {
-        editWyscigModal.addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            document.getElementById('editWyscigId').value = button.getAttribute('data-id');
-            document.getElementById('editWyscigNazwa').value = button.getAttribute('data-nazwa');
-            var idz = button.getAttribute('data-idz');
-            var sel = document.getElementById('editWyscigZawody');
-            if (sel) sel.value = idz || "";
-        });
-    }
-    var addModal = document.getElementById('addDruzynaModal');
-    if (addModal) {
-        addModal.addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            var id = button.getAttribute('data-id');
-            var nazwa = button.getAttribute('data-wyscignazwa') || '';
-            document.getElementById('addDruzynaWyscigId').value = id;
-            document.getElementById('addDruzynaWyscigName').textContent = nazwa;
-            document.getElementById('addDruzynaNazwa').value = '';
-            document.getElementById('addDruzynaTor').value = '';
-            document.getElementById('addDruzynaWynik').value = '';
-            document.getElementById('addDruzynaMiejsce').value = '';
-        });
-    }
+    (function () {
 
-    (function(){
-        const zawodyItems = document.querySelectorAll('.zawody-item');
-        const selectZawody = document.getElementById('selectIdZawodow');
+        // --- Modal: Edytuj zawody ---
+        document.querySelectorAll('.edit-zawody-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                document.getElementById('editZawodyId').value = btn.getAttribute('data-id') || '';
+                document.getElementById('editZawodyNazwa').value = btn.getAttribute('data-nazwa') || '';
+
+                var modalEl = document.getElementById('editZawodyModal');
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+        });
+
+        // --- Modal: Edytuj wyścig ---
+        var editWyscigModal = document.getElementById('editWyscigModal');
+        if (editWyscigModal) {
+            editWyscigModal.addEventListener('show.bs.modal', function (event) {
+                var button = event.relatedTarget;
+                if (!button) return;
+                document.getElementById('editWyscigId').value = button.getAttribute('data-id') || '';
+                document.getElementById('editWyscigNazwa').value = button.getAttribute('data-nazwa') || '';
+                var sel = document.getElementById('editWyscigZawody');
+                if (sel) sel.value = button.getAttribute('data-idz') || '';
+            });
+        }
+
+        // --- Modal: Dodaj drużynę ---
+        var addDruzynaModal = document.getElementById('addDruzynaModal');
+        if (addDruzynaModal) {
+            addDruzynaModal.addEventListener('show.bs.modal', function (event) {
+                var button = event.relatedTarget;
+                if (!button) return;
+                document.getElementById('addDruzynaWyscigId').value = button.getAttribute('data-id') || '';
+                document.getElementById('addDruzynaWyscigName').textContent = button.getAttribute('data-wyscignazwa') || '';
+                document.getElementById('addDruzynaNazwa').value = '';
+                document.getElementById('addDruzynaTor').value = '';
+                document.getElementById('addDruzynaWynik').value = '';
+                document.getElementById('addWynikFeedback').textContent = '';
+                document.getElementById('addWynikFeedback').className = 'form-text';
+            });
+        }
+
+        // Walidacja formatu wyniku na żywo
+        var wynikRegex = /^\d{1,2}:\d{2},\d{3}$/;
+
+        function bindWynikValidation(inputId, feedbackId) {
+            var inp = document.getElementById(inputId);
+            var fb  = document.getElementById(feedbackId);
+            if (!inp || !fb) return;
+            inp.addEventListener('input', function () {
+                var val = inp.value.trim();
+                if (val === '') {
+                    fb.textContent = 'Brak wyniku — drużyna trafi na koniec listy.';
+                    fb.className = 'form-text text-muted';
+                    inp.classList.remove('is-valid', 'is-invalid');
+                } else if (wynikRegex.test(val)) {
+                    fb.textContent = '✔ Poprawny format.';
+                    fb.className = 'form-text text-success';
+                    inp.classList.remove('is-invalid');
+                    inp.classList.add('is-valid');
+                } else {
+                    fb.textContent = '✘ Format: MM:SS,mmm (np. 1:23,456)';
+                    fb.className = 'form-text text-danger';
+                    inp.classList.remove('is-valid');
+                    inp.classList.add('is-invalid');
+                }
+            });
+        }
+
+        bindWynikValidation('addDruzynaWynik', 'addWynikFeedback');
+        bindWynikValidation('editDruzynaWynik', 'editWynikFeedback');
+
+        // --- Modal: Edytuj drużynę (kliknięcie w wiersz) ---
+        document.addEventListener('click', function (e) {
+            var row = e.target.closest('.team-editable');
+            if (!row) return;
+            document.getElementById('editDruzynaId').value = row.getAttribute('data-team-id') || '';
+            document.getElementById('editDruzynaNazwa').value = row.getAttribute('data-team-name') || '';
+            document.getElementById('editDruzynaTor').value = row.getAttribute('data-team-tor') || '';
+            var wynikVal = row.getAttribute('data-team-wynik') || '';
+            document.getElementById('editDruzynaWynik').value = wynikVal;
+            document.getElementById('editWynikFeedback').textContent = '';
+            document.getElementById('editWynikFeedback').className = 'form-text';
+            document.getElementById('editDruzynaWynik').classList.remove('is-valid', 'is-invalid');
+            var wyscigId = row.getAttribute('data-team-wyscig') || '';
+            document.getElementById('editDruzynaWyscigName').textContent = wyscigId ? 'ID wyścigu: ' + wyscigId : '';
+
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('editDruzynaModal')).show();
+        });
+
+        // --- Przycisk Usuń drużynę w modalu edycji ---
+        var btnDel = document.getElementById('btnDeleteDruzyna');
+        if (btnDel) {
+            btnDel.addEventListener('click', function () {
+                if (!confirm('Na pewno usunąć tę drużynę?')) return;
+                document.getElementById('deleteDruzynaId').value = document.getElementById('editDruzynaId').value;
+                document.getElementById('formDeleteDruzyna').submit();
+            });
+        }
+
+        // --- Wybór zawodów (filtrowanie listy wyścigów) ---
+        var zawodyItems = document.querySelectorAll('.zawody-item');
+        var selectZawody = document.getElementById('selectIdZawodow');
 
         function clearSelection() {
-            zawodyItems.forEach(it => it.classList.remove('active'));
+            zawodyItems.forEach(function (it) { it.classList.remove('active'); });
             if (selectZawody) selectZawody.value = "";
         }
 
-        function selectById(id, saveCookie = false) {
-            zawodyItems.forEach(it => {
-                if (it.dataset.id === String(id)) it.classList.add('active'); else it.classList.remove('active');
+        function selectById(id, saveCookie) {
+            zawodyItems.forEach(function (it) {
+                if (it.dataset.id === String(id)) it.classList.add('active');
+                else it.classList.remove('active');
             });
             if (selectZawody) selectZawody.value = id;
-            if (saveCookie) setCookie('zawody_formularz', id, 30);
+            if (saveCookie) {
+                setCookie('zawody_formularz', id, 30);
+                location.reload();
+            }
         }
 
-        zawodyItems.forEach(it => {
-            it.addEventListener('click', function(){
-                const id = this.dataset.id;
+        zawodyItems.forEach(function (it) {
+            it.addEventListener('click', function () {
+                // Ignoruj kliknięcia w przyciski wewnątrz wiersza
+                if (event.target.closest('button') || event.target.closest('form')) return;
+                var id = this.dataset.id;
                 if (this.classList.contains('active')) {
                     clearSelection();
                     setCookie('zawody_formularz', '', -1);
+                    location.reload();
                 } else {
                     selectById(id, true);
                 }
@@ -631,34 +917,6 @@ $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE
             if (el) selectById(cookieVal, false);
         }
 
-        document.addEventListener('click', function(e){
-            var row = e.target.closest('.team-editable');
-            if (!row) return;
-            var id = row.getAttribute('data-team-id');
-            var name = row.getAttribute('data-team-name') || '';
-            var wynik = row.getAttribute('data-team-wynik') || '';
-            var tor = row.getAttribute('data-team-tor') || '';
-            var miejsce = row.getAttribute('data-team-miejsce') || '';
-            document.getElementById('editDruzynaId').value = id;
-            document.getElementById('editDruzynaNazwa').value = name;
-            document.getElementById('editDruzynaTor').value = tor;
-            document.getElementById('editDruzynaWynik').value = wynik;
-            document.getElementById('editDruzynaMiejsce').value = miejsce;
-            document.getElementById('editDruzynaWyscigName').textContent = '';
-            var modalEl = document.getElementById('editDruzynaModal');
-            var modal = new bootstrap.Modal(modalEl);
-            modal.show();
-        });
-
-        var btnDel = document.getElementById('btnDeleteDruzyna');
-        if (btnDel) {
-            btnDel.addEventListener('click', function(){
-                if (!confirm('Na pewno usunąć tę drużynę?')) return;
-                var id = document.getElementById('editDruzynaId').value;
-                document.getElementById('deleteDruzynaId').value = id;
-                document.getElementById('formDeleteDruzyna').submit();
-            });
-        }
     })();
 </script>
 </body>

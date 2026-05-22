@@ -1,26 +1,25 @@
 <?php
-session_start();
 require_once "config.php";
 
-// Pobierz id zawodów z cookies (ustawiany z management.php)
 $zawody_id = 0;
-if (isset($_COOKIE['zawody_prezentacyjne'])) {
-    $zawody_id = (int)$_COOKIE['zawody_prezentacyjne'];
+$nazwa_zawodow = '';
+
+$res = $conn->query("SELECT wartosc FROM ustawienia WHERE klucz = 'aktywne_zawody' LIMIT 1");
+if ($res && $res->num_rows > 0) {
+    $row = $res->fetch_assoc();
+    $zawody_id = (int)$row['wartosc'];
+    $res->free();
 }
 
-// Jeśli brak cookies lub id = 0, wyświetl informację
 if ($zawody_id === 0) {
-    // Pobierz pierwsze zawody jako fallback
     $res = $conn->query("SELECT id FROM zawody ORDER BY id ASC LIMIT 1");
     if ($res && $res->num_rows > 0) {
         $row = $res->fetch_assoc();
-        $zawody_id = $row['id'];
+        $zawody_id = (int)$row['id'];
         $res->free();
     }
 }
 
-// Pobierz dane bieżących zawodów
-$nazwa_zawodow = '';
 if ($zawody_id > 0) {
     $res = $conn->query("SELECT nazwa FROM zawody WHERE id = " . (int)$zawody_id);
     if ($res && $res->num_rows > 0) {
@@ -35,12 +34,10 @@ if ($zawody_id > 0) {
 <head>
     <meta charset="utf-8">
     <title>Wyniki Smoczych Łodzi</title>
-    <!-- Bootstrap CSS (CDN) -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         #resultsContainer { min-height: 300px; }
         .refresh-indicator { font-size: 0.85rem; color: #999; margin-top: 10px; }
-        .nav-link { cursor: pointer; }
     </style>
 </head>
 <body class="bg-light">
@@ -53,11 +50,10 @@ if ($zawody_id > 0) {
 
 <div class="container">
     <div class="row gy-4">
-        <!-- Główna sekcja: wyniki -->
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-header">
-                    <strong>Wyniki: <?php echo htmlspecialchars($nazwa_zawodow ?: 'Brak zawodów'); ?></strong>
+                    <strong>Wyniki: <span id="zawodyNazwa"><?php echo htmlspecialchars($nazwa_zawodow ?: 'Ładowanie...'); ?></span></strong>
                 </div>
                 <div id="resultsContainer" class="card-body">
                     <div class="text-center">
@@ -74,39 +70,37 @@ if ($zawody_id > 0) {
     </div>
 </div>
 
-<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
     (function(){
         const resultsContainer = document.getElementById('resultsContainer');
-        const zawodyId = <?php echo (int)$zawody_id; ?>;
+        const zawodyNazwaEl = document.getElementById('zawodyNazwa');
+        let currentZawodyId = <?php echo (int)$zawody_id; ?>;
 
-        // funkcja do pobierania i wyświetlania wyników
         function loadResults() {
-            let url = 'ajax_get_results.php';
-            if (zawodyId > 0) {
-                url += '?zawody_id=' + encodeURIComponent(zawodyId);
-            }
+            fetch('ajax_get_settings.php')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.zawody_id && data.zawody_id !== currentZawodyId) {
+                        currentZawodyId = data.zawody_id;
+                        zawodyNazwaEl.textContent = data.nazwa_zawodow || 'Brak nazwy';
+                    }
 
-            fetch(url)
-                .then(response => response.text())
+                    let url = 'ajax_get_results.php?zawody_id=' + currentZawodyId;
+                    return fetch(url).then(r => r.text());
+                })
                 .then(html => {
                     resultsContainer.innerHTML = html;
                 })
-                .catch(error => {
-                    resultsContainer.innerHTML = '<div class="alert alert-danger">Błąd ładowania danych</div>';
-                    console.error('Error:', error);
+                .catch(err => {
+                    resultsContainer.innerHTML = '<div class="alert alert-danger">Błąd: ' + err.message + '</div>';
+                    console.error(err);
                 });
         }
 
-        // initial load
         loadResults();
-
-        // auto-refresh co 5 sekund
-        setInterval(() => {
-            loadResults();
-        }, 5000);
+        setInterval(loadResults, 5000);
     })();
 </script>
 

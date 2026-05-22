@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Maj 19, 2026 at 11:07 PM
+-- Generation Time: Maj 22, 2026 at 11:59 PM
 -- Wersja serwera: 10.4.32-MariaDB
 -- Wersja PHP: 8.2.12
 
@@ -128,8 +128,7 @@ CREATE TABLE `zawody` (
 
 INSERT INTO `zawody` (`id`, `nazwa`) VALUES
 (1, 'Mistrzostwa Polski 2026'),
-(3, 'Mistrzostwa Polski 2025'),
-(4, 'W wyciąganiu chuja z wody XD 2026');
+(3, 'Mistrzostwa Polski 2025');
 
 --
 -- Indeksy dla zrzutów tabel
@@ -190,7 +189,7 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `ustawienia`
 --
 ALTER TABLE `ustawienia`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=104;
 
 --
 -- AUTO_INCREMENT for table `wyscigi`
