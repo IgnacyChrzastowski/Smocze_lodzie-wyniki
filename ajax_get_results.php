@@ -15,14 +15,14 @@ if ($zawody_id > 0) {
         FROM wyscigi w
         LEFT JOIN zawody z ON w.id_zawodow = z.id
         WHERE w.id_zawodow = " . (int)$zawody_id . "
-        ORDER BY w.id ASC
+        ORDER BY w.id DESC
     ");
 } else {
     $res = $conn->query("
         SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z
         FROM wyscigi w
         LEFT JOIN zawody z ON w.id_zawodow = z.id
-        ORDER BY w.id ASC
+        ORDER BY w.id DESC
     ");
 }
 
