@@ -286,7 +286,48 @@ if ($res_lista) {
             color: #adb5bd;
             font-size: 1rem;
         }
-        .fromair-logo { height: 38px; width: auto; border-radius: 6px; }
+
+        /* --- wyrównanie brand + skalowanie logo względem tekstu --- */
+        .navbar { align-items: center; }
+
+        .navbar .navbar-brand {
+            display: inline-flex;
+            align-items: center;
+            height: 100%;
+            line-height: 1;
+            margin: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        /* obrazek fromair - wysokość w em, skalowana razem z rozmiarem fontu */
+        .fromair-logo {
+            display: block;
+            height: 1.15em;   /* dopasowuje logo do wysokości tekstu; zmień tutaj jeśli trzeba */
+            width: auto;
+            border-radius: 6px;
+            vertical-align: middle;
+            margin-left: 6px;
+        }
+
+        /* upewniamy się, że link z logo ma centrowanie */
+        .navbar .d-flex.align-items-center a,
+        .navbar .d-flex.align-items-center > a {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        /* mniejsze selecty na bardzo wąskich ekranach, żeby nie wypychały logo */
+        .navbar-zawody-select select {
+            min-width: 140px;
+        }
+
+        @media (max-width: 576px) {
+            .navbar-zawody-select select { min-width: 110px; }
+            .fromair-logo { height: 1.0em; }   /* mniejsze logo na bardzo wąskich ekranach */
+            .navbar .navbar-brand { font-size: clamp(1rem, 4vw, 1.2rem); }
+        }
+
         #resultsContainer { min-height: 200px; }
     </style>
 </head>
