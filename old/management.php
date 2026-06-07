@@ -12,13 +12,36 @@ $alert = "";
 
 // ---------------------- HANDLERY POST ----------------------------
 
+// Handler dla zmiany ustawień prezentacji (zapis do tabeli ustawienia)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'ustaw_prezentacje') {
+    $zawody_id = (int)(isset($_POST['zawody_prezentacyjne']) ? $_POST['zawody_prezentacyjne'] : 0);
+    if ($zawody_id <= 0) {
+        $alert = "Wybierz poprawne zawody.";
+    } else {
+        $stmt = $conn->prepare("INSERT INTO ustawienia (`klucz`, `wartosc`) VALUES (?, ?) ON DUPLICATE KEY UPDATE wartosc = VALUES(wartosc)");
+        if ($stmt) {
+            $klucz = 'aktywne_zawody';
+            $wartosc = (string)$zawody_id;
+            $stmt->bind_param("ss", $klucz, $wartosc);
+            if ($stmt->execute()) {
+                $alert = "Ustawienia zapisane.";
+            } else {
+                $alert = "Błąd zapisu ustawień: " . $conn->error;
+            }
+            $stmt->close();
+        } else {
+            $alert = "Błąd przygotowania zapytania: " . $conn->error;
+        }
+    }
+}
+
 // Dodaj nowe zawody
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_zawody') {
     $nazwa = trim(isset($_POST['nazwa_zawodow']) ? $_POST['nazwa_zawodow'] : '');
     if ($nazwa === '') {
         $alert = "Podaj nazwę zawodów.";
     } else {
-        $stmt = $conn->prepare("INSERT INTO zawody (nazwa, status) VALUES (?, 'aktywne')");
+        $stmt = $conn->prepare("INSERT INTO zawody (nazwa) VALUES (?)");
         if ($stmt) {
             $stmt->bind_param("s", $nazwa);
             if ($stmt->execute()) {
@@ -53,68 +76,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt->close();
         } else {
             $alert = "Błąd przygotowania zapytania: " . $conn->error;
-        }
-    }
-}
-
-// Archiwizuj/Aktywuj zawody
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_archive_zawody') {
-    $id = (int)(isset($_POST['id_zawody']) ? $_POST['id_zawody'] : 0);
-    if ($id <= 0) {
-        $alert = "Niepoprawne id zawodów.";
-    } else {
-        // Pobierz obecny status
-        $res = $conn->query("SELECT status FROM zawody WHERE id = " . $id . " LIMIT 1");
-        if ($res && $res->num_rows > 0) {
-            $row = $res->fetch_assoc();
-            $current_status = $row['status'];
-            $res->free();
-
-            // Przełącz status
-            $new_status = ($current_status === 'aktywne') ? 'zarchiwizowane' : 'aktywne';
-
-            $stmt = $conn->prepare("UPDATE zawody SET status = ? WHERE id = ?");
-            if ($stmt) {
-                $stmt->bind_param("si", $new_status, $id);
-                if ($stmt->execute()) {
-                    // Jeśli archiwizujesz zawody, które były ustawione jako prezentacyjne, przełącz na nowe aktywne
-                    if ($new_status === 'zarchiwizowane') {
-                        $res_check = $conn->query("SELECT wartosc FROM ustawienia WHERE klucz = 'aktywne_zawody' LIMIT 1");
-                        if ($res_check && $res_check->num_rows > 0) {
-                            $row_check = $res_check->fetch_assoc();
-                            if ((int)$row_check['wartosc'] === $id) {
-                                // Te zawody TO zawody prezentacyjne, szukamy nowych aktywnych
-                                $res_nowe = $conn->query("SELECT id FROM zawody WHERE status = 'aktywne' AND id != " . $id . " ORDER BY id ASC LIMIT 1");
-                                if ($res_nowe && $res_nowe->num_rows > 0) {
-                                    $row_nowe = $res_nowe->fetch_assoc();
-                                    $new_zawody_id = (int)$row_nowe['id'];
-                                    $res_nowe->free();
-
-                                    $stmt_upd = $conn->prepare("UPDATE ustawienia SET wartosc = ? WHERE klucz = 'aktywne_zawody'");
-                                    if ($stmt_upd) {
-                                        $val = (string)$new_zawody_id;
-                                        $stmt_upd->bind_param("s", $val);
-                                        $stmt_upd->execute();
-                                        $stmt_upd->close();
-                                    }
-                                }
-                            }
-                            $res_check->free();
-                        }
-                    }
-
-                    $alert = "Status zawodów zmieniony na: " . $new_status;
-                    header("Location: " . $_SERVER['PHP_SELF']);
-                    exit;
-                } else {
-                    $alert = "Błąd aktualizacji statusu: " . $conn->error;
-                }
-                $stmt->close();
-            } else {
-                $alert = "Błąd przygotowania zapytania: " . $conn->error;
-            }
-        } else {
-            $alert = "Nie znaleziono zawodów o podanym ID.";
         }
     }
 }
@@ -388,10 +349,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // ---------------------- Pobranie danych ----------------------------
 
 $zawody = [];
-$res = $conn->query("SELECT id, nazwa, status FROM zawody ORDER BY id ASC");
+$res = $conn->query("SELECT id, nazwa FROM zawody ORDER BY id ASC");
 if ($res) {
     while ($r = $res->fetch_assoc()) $zawody[] = $r;
     $res->free();
+}
+
+// pobierz ustawienia prezentacyjne (z bazy) aby ustawić select w sekcji ustawień
+$aktywne_zawody = 0;
+$res_ust = $conn->query("SELECT wartosc FROM ustawienia WHERE klucz = 'aktywne_zawody' LIMIT 1");
+if ($res_ust && $res_ust->num_rows > 0) {
+    $row_ust = $res_ust->fetch_assoc();
+    $aktywne_zawody = (int)$row_ust['wartosc'];
+    $res_ust->free();
 }
 
 // drużyny z polem tor (wszystkie)
@@ -438,8 +408,6 @@ if ($res2) {
         .list-group-flush .list-group-item.active { background-color: #0d6efd; color: #fff; }
         .teams-row table { margin-bottom: 0; }
         .team-editable { cursor: pointer; }
-        .archive-badge { font-size: 0.75rem; }
-        .archive-item { opacity: 0.7; }
     </style>
 </head>
 <body class="bg-light">
@@ -462,6 +430,37 @@ if ($res2) {
     <?php endif; ?>
 
     <div class="row gy-4">
+        <!-- USTAWIENIA STRONY PREZENTACYJNEJ -->
+        <div class="col-12">
+            <div class="card shadow-sm border-info">
+                <div class="card-header bg-info text-white"><strong>⚙️ Ustawienia strony prezentacyjnej</strong></div>
+                <div class="card-body">
+                    <form method="post">
+                        <input type="hidden" name="action" value="ustaw_prezentacje">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label"><strong>Wybierz zawody do wyświetlania:</strong></label>
+                                <select name="zawody_prezentacyjne" class="form-select" required>
+                                    <option value="">-- wybierz --</option>
+                                    <?php foreach ($zawody as $z): ?>
+                                        <option value="<?php echo (int)$z['id']; ?>" <?php echo ($aktywne_zawody === (int)$z['id']) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($z['nazwa']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <div style="padding-top: 32px;">
+                                    <button type="submit" class="btn btn-info">Zastosuj ustawienia</button>
+                                    <small class="text-muted ms-2">Zmiana będzie widoczna na stronie index.php po odświeżeniu.</small>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <div class="col-md-6">
             <div class="card shadow-sm">
                 <div class="card-header"><strong>Dodaj nowe zawody</strong></div>
@@ -486,27 +485,14 @@ if ($res2) {
                         <div class="list-group list-group-flush">
                             <?php foreach ($zawody as $z):
                                 $isActive = ($selected_zawody_formularz === (int)$z['id']);
-                                $isArchived = ($z['status'] === 'zarchiwizowane');
-                                $archiveClass = $isArchived ? ' archive-item' : '';
-                                $archiveButtonLabel = $isArchived ? '🔓 Aktywuj' : '🔒 Archiwizuj';
                                 ?>
-                                <div class="list-group-item d-flex justify-content-between align-items-center zawody-item<?php echo $isActive ? ' active' : ''; ?><?php echo $archiveClass; ?>"
+                                <div class="list-group-item d-flex justify-content-between align-items-center zawody-item<?php echo $isActive ? ' active' : ''; ?>"
                                      data-id="<?php echo (int)$z['id']; ?>">
-                                    <div class="zawody-nazwa d-flex align-items-center">
-                                        <?php echo htmlspecialchars($z['nazwa']); ?>
-                                        <?php if ($isArchived): ?>
-                                            <span class="badge bg-secondary archive-badge ms-2">ARCHIWUM</span>
-                                        <?php endif; ?>
-                                    </div>
+                                    <div class="zawody-nazwa"><?php echo htmlspecialchars($z['nazwa']); ?></div>
                                     <div class="btn-group">
                                         <button type="button" class="btn btn-sm btn-outline-secondary edit-zawody-btn"
                                                 data-id="<?php echo (int)$z['id']; ?>"
                                                 data-nazwa="<?php echo htmlspecialchars($z['nazwa'], ENT_QUOTES); ?>">Edytuj</button>
-                                        <form method="post" style="display:inline;">
-                                            <input type="hidden" name="action" value="toggle_archive_zawody">
-                                            <input type="hidden" name="id_zawody" value="<?php echo (int)$z['id']; ?>">
-                                            <button class="btn btn-sm btn-outline-warning" type="submit"><?php echo $archiveButtonLabel; ?></button>
-                                        </form>
                                         <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć zawody?');">
                                             <input type="hidden" name="action" value="delete_zawody">
                                             <input type="hidden" name="id_zawody_del" value="<?php echo (int)$z['id']; ?>">
@@ -532,14 +518,12 @@ if ($res2) {
                             <select name="id_zawodow" class="form-select" id="selectIdZawodow" required>
                                 <option value="">-- wybierz --</option>
                                 <?php foreach ($zawody as $z): ?>
-                                    <?php if ($z['status'] === 'aktywne'): ?>
-                                        <option value="<?php echo (int)$z['id']; ?>" <?php echo ($selected_zawody_formularz === (int)$z['id']) ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($z['nazwa']); ?>
-                                        </option>
-                                    <?php endif; ?>
+                                    <option value="<?php echo (int)$z['id']; ?>" <?php echo ($selected_zawody_formularz === (int)$z['id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($z['nazwa']); ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
-                            <div class="form-text">Kliknij zawody po lewej, aby ustawić domyślny wybór formularza. (Pokazane tylko aktywne zawody)</div>
+                            <div class="form-text">Kliknij zawody po lewej, aby ustawić domyślny wybór formularza.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Nazwa wyścigu</label>
@@ -663,9 +647,7 @@ if ($res2) {
                         <label class="form-label">Zawody</label>
                         <select name="id_zawodow_edit" id="editWyscigZawody" class="form-select" required>
                             <?php foreach ($zawody as $z): ?>
-                                <?php if ($z['status'] === 'aktywne'): ?>
-                                    <option value="<?php echo (int)$z['id']; ?>"><?php echo htmlspecialchars($z['nazwa']); ?></option>
-                                <?php endif; ?>
+                                <option value="<?php echo (int)$z['id']; ?>"><?php echo htmlspecialchars($z['nazwa']); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>

@@ -1,11 +1,18 @@
 <?php
+
 require_once "config.php";
 
-// Pobierz zawody_id z GET lub ustawień
+// Pobierz zawody_id z GET
 $zawody_id = isset($_GET['zawody_id']) ? (int)$_GET['zawody_id'] : 0;
 
-if ($zawody_id === 0 && isset($_COOKIE['zawody_prezentacyjne'])) {
-    $zawody_id = (int)$_COOKIE['zawody_prezentacyjne'];
+// Fallback: aktywne zawody z ustawień
+if ($zawody_id === 0) {
+    $res = $conn->query("SELECT wartosc FROM ustawienia WHERE klucz = 'aktywne_zawody' LIMIT 1");
+    if ($res && $res->num_rows > 0) {
+        $row = $res->fetch_assoc();
+        $zawody_id = (int)$row['wartosc'];
+        $res->free();
+    }
 }
 
 // Zapytanie do bazy

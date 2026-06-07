@@ -1,0 +1,163 @@
+ZMIANY W BAZIE: 
+
+ALTER TABLE zawody
+ADD COLUMN status ENUM('aktywne','zakonczone') NOT NULL DEFAULT 'aktywne';
+UPDATE zawody
+SET status = 'zakonczone';
+
+UPDATE zawody
+SET status = 'aktywne'
+WHERE id = 1;
+
+ZMIANY W management.php
+
+zamiast: $stmt = $conn->prepare("INSERT INTO zawody (nazwa) VALUES (?)");
+dać: $conn->query("UPDATE zawody SET status='zakonczone'");
+$stmt = $conn->prepare("
+    INSERT INTO zawody (nazwa, status)
+    VALUES (?, 'aktywne')
+");
+
+
+CALY FRAGMENT: 
+if ($_SERVER['REQUEST_METHOD'] === 'POST'
+    && isset($_POST['action'])
+    && $_POST['action'] === 'add_zawody') {
+
+    $nazwa = trim($_POST['nazwa_zawodow'] ?? '');
+
+    if ($nazwa === '') {
+        $alert = "Podaj nazwę zawodów.";
+    } else {
+
+        $conn->query("UPDATE zawody SET status='zakonczone'");
+
+        $stmt = $conn->prepare("
+            INSERT INTO zawody (nazwa, status)
+            VALUES (?, 'aktywne')
+        ");
+
+        $stmt->bind_param("s", $nazwa);
+
+        if ($stmt->execute()) {
+
+            $new_id = $conn->insert_id;
+
+            $stmt2 = $conn->prepare("
+                INSERT INTO ustawienia (klucz, wartosc)
+                VALUES ('aktywne_zawody', ?)
+                ON DUPLICATE KEY UPDATE wartosc=VALUES(wartosc)
+            ");
+
+            $wartosc = (string)$new_id;
+            $stmt2->bind_param("s", $wartosc);
+            $stmt2->execute();
+
+            header("Location: ".$_SERVER['PHP_SELF']);
+            exit;
+        }
+    }
+}
+
+ZMIANY W ajax_get_settings.php i index.php
+
+zamiast: 
+SELECT wartosc
+FROM ustawienia
+WHERE klucz='aktywne_zawody'
+
+dać: 
+SELECT id, nazwa
+FROM zawody
+WHERE status='aktywne'
+LIMIT 1
+
+przykład: 
+$res = $conn->query("
+    SELECT id, nazwa
+    FROM zawody
+    WHERE status='aktywne'
+    LIMIT 1
+");
+
+if ($res && $row = $res->fetch_assoc()) {
+    $zawody_id = (int)$row['id'];
+    $nazwa_zawodow = $row['nazwa'];
+}
+
+ZMIANY W index.php:
+
+dodać pod nagłówkiem zawody: 
+<div class="mb-3">
+    <select id="zawodySelect" class="form-select">
+    </select>
+</div>
+
+UTWÓRZ PLIK ajax_get_zawody.php
+
+<?php
+require_once "config.php";
+
+header('Content-Type: application/json; charset=utf-8');
+
+$data = [];
+
+$res = $conn->query("
+    SELECT id,nazwa,status
+    FROM zawody
+    ORDER BY
+        CASE WHEN status='aktywne' THEN 0 ELSE 1 END,
+        id DESC
+");
+
+while($row = $res->fetch_assoc()){
+    $data[] = $row;
+}
+
+echo json_encode($data, JSON_UNESCAPED_UNICODE);
+
+ZMIANY W index.php:
+dodać:
+const selectZawody = document.getElementById('zawodySelect');
+
+function loadZawodyList() {
+
+    fetch('ajax_get_zawody.php')
+        .then(r => r.json())
+        .then(data => {
+
+            selectZawody.innerHTML = '';
+
+            data.forEach(z => {
+
+                const option = document.createElement('option');
+
+                option.value = z.id;
+
+                option.textContent =
+                    z.nazwa +
+                    (z.status === 'aktywne'
+                        ? ' (AKTYWNE)'
+                        : ' (zakończone)');
+
+                if (parseInt(z.id) === parseInt(currentZawodyId)) {
+                    option.selected = true;
+                }
+
+                selectZawody.appendChild(option);
+            });
+        });
+}
+
+oraz:
+selectZawody.addEventListener('change', function(){
+
+    currentZawodyId = this.value;
+
+    loadResults();
+});
+
+i na koniec:
+loadZawodyList();
+loadResults();
+setInterval(loadResults, 5000);

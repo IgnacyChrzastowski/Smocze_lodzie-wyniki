@@ -1,5 +1,4 @@
 <?php
-
 require_once "config.php";
 header('Content-Type: application/json; charset=utf-8');
 
@@ -14,7 +13,7 @@ if ($res && $res->num_rows > 0) {
 }
 
 if ($zawody_id === 0) {
-    $res = $conn->query("SELECT id FROM zawody WHERE status = 'aktywne' ORDER BY id ASC LIMIT 1");
+    $res = $conn->query("SELECT id FROM zawody ORDER BY id ASC LIMIT 1");
     if ($res && $res->num_rows > 0) {
         $row = $res->fetch_assoc();
         $zawody_id = (int)$row['id'];
@@ -31,24 +30,8 @@ if ($zawody_id > 0) {
     }
 }
 
-// Pobierz wszystkie zawody do listy rozwijalnej
-$lista_zawodow = [];
-$res_lista = $conn->query("SELECT id, nazwa, status FROM zawody ORDER BY status ASC, id DESC");
-// status ASC: 'aktywne' przed 'zakończone' (a < z)
-if ($res_lista) {
-    while ($row = $res_lista->fetch_assoc()) {
-        $lista_zawodow[] = [
-            'id'     => (int)$row['id'],
-            'nazwa'  => $row['nazwa'],
-            'status' => $row['status']
-        ];
-    }
-    $res_lista->free();
-}
-
 echo json_encode([
-    'zawody_id'     => $zawody_id,
-    'nazwa_zawodow' => $nazwa_zawodow,
-    'lista_zawodow' => $lista_zawodow
+    'zawody_id' => $zawody_id,
+    'nazwa_zawodow' => $nazwa_zawodow
 ], JSON_UNESCAPED_UNICODE);
 ?>
