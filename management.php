@@ -141,19 +141,134 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// ---------------------- HANDLERY: SŁOWNIKI (kategorie, dystanse, fazy, tory, globalna lista drużyn) ----------------------------
+// Wszystkie 5 tabel mają kształt id+nazwa (dystans ma dodatkowo metry, faza dodatkowo kolejnosc),
+// więc obsługujemy je jednym generycznym zestawem handlerów rozróżnianych przez pole `typ`.
+$slowniki_tabele = [
+        'kategoria' => 'kategorie',
+        'dystans'   => 'dystanse',
+        'faza'      => 'fazy',
+        'tor'       => 'tory',
+        'druzyna'   => 'druzyny',
+];
+
+// Dodaj pozycję słownika
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_slownik') {
+    $typ = isset($_POST['typ']) ? $_POST['typ'] : '';
+    $nazwa = trim(isset($_POST['nazwa']) ? $_POST['nazwa'] : '');
+
+    if (!isset($slowniki_tabele[$typ]) || $nazwa === '') {
+        $alert = "Podaj nazwę.";
+    } else {
+        $stmt = null;
+        if ($typ === 'dystans') {
+            $metry = (isset($_POST['metry']) && $_POST['metry'] !== '') ? (int)$_POST['metry'] : null;
+            $stmt = $conn->prepare("INSERT INTO dystanse (nazwa, metry) VALUES (?, ?)");
+            if ($stmt) $stmt->bind_param("si", $nazwa, $metry);
+        } elseif ($typ === 'faza') {
+            $kolejnosc = (isset($_POST['kolejnosc']) && $_POST['kolejnosc'] !== '') ? (int)$_POST['kolejnosc'] : null;
+            $stmt = $conn->prepare("INSERT INTO fazy (nazwa, kolejnosc) VALUES (?, ?)");
+            if ($stmt) $stmt->bind_param("si", $nazwa, $kolejnosc);
+        } else {
+            $tabela = $slowniki_tabele[$typ];
+            $stmt = $conn->prepare("INSERT INTO `$tabela` (nazwa) VALUES (?)");
+            if ($stmt) $stmt->bind_param("s", $nazwa);
+        }
+
+        if ($stmt) {
+            if ($stmt->execute()) {
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit;
+            } else {
+                $alert = "Błąd zapisu: " . $conn->error;
+            }
+            $stmt->close();
+        } else {
+            $alert = "Błąd przygotowania zapytania: " . $conn->error;
+        }
+    }
+}
+
+// Edytuj pozycję słownika
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_slownik') {
+    $typ = isset($_POST['typ']) ? $_POST['typ'] : '';
+    $id = (int)(isset($_POST['id']) ? $_POST['id'] : 0);
+    $nazwa = trim(isset($_POST['nazwa']) ? $_POST['nazwa'] : '');
+
+    if (!isset($slowniki_tabele[$typ]) || $id <= 0 || $nazwa === '') {
+        $alert = "Niepoprawne dane przy edycji.";
+    } else {
+        $stmt = null;
+        if ($typ === 'dystans') {
+            $metry = (isset($_POST['metry']) && $_POST['metry'] !== '') ? (int)$_POST['metry'] : null;
+            $stmt = $conn->prepare("UPDATE dystanse SET nazwa = ?, metry = ? WHERE id = ?");
+            if ($stmt) $stmt->bind_param("sii", $nazwa, $metry, $id);
+        } elseif ($typ === 'faza') {
+            $kolejnosc = (isset($_POST['kolejnosc']) && $_POST['kolejnosc'] !== '') ? (int)$_POST['kolejnosc'] : null;
+            $stmt = $conn->prepare("UPDATE fazy SET nazwa = ?, kolejnosc = ? WHERE id = ?");
+            if ($stmt) $stmt->bind_param("sii", $nazwa, $kolejnosc, $id);
+        } else {
+            $tabela = $slowniki_tabele[$typ];
+            $stmt = $conn->prepare("UPDATE `$tabela` SET nazwa = ? WHERE id = ?");
+            if ($stmt) $stmt->bind_param("si", $nazwa, $id);
+        }
+
+        if ($stmt) {
+            if ($stmt->execute()) {
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit;
+            } else {
+                $alert = "Błąd aktualizacji: " . $conn->error;
+            }
+            $stmt->close();
+        } else {
+            $alert = "Błąd przygotowania zapytania: " . $conn->error;
+        }
+    }
+}
+
+// Usuń pozycję słownika
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_slownik') {
+    $typ = isset($_POST['typ']) ? $_POST['typ'] : '';
+    $id = (int)(isset($_POST['id']) ? $_POST['id'] : 0);
+
+    if (!isset($slowniki_tabele[$typ]) || $id <= 0) {
+        $alert = "Niepoprawne dane przy usuwaniu.";
+    } else {
+        $tabela = $slowniki_tabele[$typ];
+        $stmt = $conn->prepare("DELETE FROM `$tabela` WHERE id = ?");
+        if ($stmt) {
+            $stmt->bind_param("i", $id);
+            if ($stmt->execute()) {
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit;
+            } else {
+                $alert = "Błąd usuwania (sprawdź, czy pozycja nie jest nigdzie użyta): " . $conn->error;
+            }
+            $stmt->close();
+        } else {
+            $alert = "Błąd przygotowania zapytania: " . $conn->error;
+        }
+    }
+}
+
 // Dodaj wyścig
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_wyscig') {
     $nazwa_w = trim(isset($_POST['nazwa_wyscigu']) ? $_POST['nazwa_wyscigu'] : '');
     $id_z = (int)(isset($_POST['id_zawodow']) ? $_POST['id_zawodow'] : 0);
+    $numer_globalny = (isset($_POST['numer_globalny']) && $_POST['numer_globalny'] !== '') ? (int)$_POST['numer_globalny'] : null;
+    $id_kategorii   = (isset($_POST['id_kategorii'])   && $_POST['id_kategorii']   !== '') ? (int)$_POST['id_kategorii']   : null;
+    $id_dystansu    = (isset($_POST['id_dystansu'])    && $_POST['id_dystansu']    !== '') ? (int)$_POST['id_dystansu']    : null;
+    $id_fazy        = (isset($_POST['id_fazy'])        && $_POST['id_fazy']        !== '') ? (int)$_POST['id_fazy']        : null;
 
     if ($id_z <= 0) {
         $alert = "Musisz wybrać zawody przed dodaniem wyścigu.";
     } elseif ($nazwa_w === '') {
         $alert = "Podaj nazwę wyścigu.";
     } else {
-        $insw = $conn->prepare("INSERT INTO wyscigi (id_zawodow, nazwa) VALUES (?, ?)");
+        $insw = $conn->prepare("INSERT INTO wyscigi (id_zawodow, nazwa, numer_globalny, id_kategorii, id_dystansu, id_fazy) VALUES (?, ?, ?, ?, ?, ?)");
         if ($insw) {
-            $insw->bind_param("is", $id_z, $nazwa_w);
+            $insw->bind_param("isiiii", $id_z, $nazwa_w, $numer_globalny, $id_kategorii, $id_dystansu, $id_fazy);
             if ($insw->execute()) {
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
@@ -172,12 +287,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $id = (int)(isset($_POST['id_wyscigu_edit']) ? $_POST['id_wyscigu_edit'] : 0);
     $nazwa = trim(isset($_POST['nazwa_wyscigu_edit']) ? $_POST['nazwa_wyscigu_edit'] : '');
     $id_z = (int)(isset($_POST['id_zawodow_edit']) ? $_POST['id_zawodow_edit'] : 0);
+    $numer_globalny = (isset($_POST['numer_globalny_edit']) && $_POST['numer_globalny_edit'] !== '') ? (int)$_POST['numer_globalny_edit'] : null;
+    $id_kategorii   = (isset($_POST['id_kategorii_edit'])   && $_POST['id_kategorii_edit']   !== '') ? (int)$_POST['id_kategorii_edit']   : null;
+    $id_dystansu    = (isset($_POST['id_dystansu_edit'])    && $_POST['id_dystansu_edit']    !== '') ? (int)$_POST['id_dystansu_edit']    : null;
+    $id_fazy        = (isset($_POST['id_fazy_edit'])        && $_POST['id_fazy_edit']        !== '') ? (int)$_POST['id_fazy_edit']        : null;
     if ($id <= 0 || $nazwa === '' || $id_z <= 0) {
         $alert = "Niepoprawne dane przy edycji wyścigu.";
     } else {
-        $stmt = $conn->prepare("UPDATE wyscigi SET id_zawodow = ?, nazwa = ? WHERE id = ?");
+        $stmt = $conn->prepare("UPDATE wyscigi SET id_zawodow = ?, nazwa = ?, numer_globalny = ?, id_kategorii = ?, id_dystansu = ?, id_fazy = ? WHERE id = ?");
         if ($stmt) {
-            $stmt->bind_param("isi", $id_z, $nazwa, $id);
+            $stmt->bind_param("isiiiii", $id_z, $nazwa, $numer_globalny, $id_kategorii, $id_dystansu, $id_fazy, $id);
             if ($stmt->execute()) {
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
@@ -224,7 +343,7 @@ function wynik_na_ms(string $wynik): int {
 // - drużyny z wynikiem sortowane rosnąco po czasie (1, 2, 3, ...)
 // - drużyny bez wyniku dostają miejsca za nimi (kolejność wg ID)
 function przelicz_miejsca(mysqli $conn, int $id_wyscigu): void {
-    $res = $conn->query("SELECT id, wynik FROM druzyny WHERE id_wyscigu = " . $id_wyscigu . " ORDER BY id ASC");
+    $res = $conn->query("SELECT id, wynik FROM wyniki WHERE id_wyscigu = " . $id_wyscigu . " ORDER BY id ASC");
     if (!$res) return;
 
     $z_wynikiem = [];
@@ -243,7 +362,7 @@ function przelicz_miejsca(mysqli $conn, int $id_wyscigu): void {
     });
 
     $miejsce = 1;
-    $upd = $conn->prepare("UPDATE druzyny SET miejsce = ? WHERE id = ?");
+    $upd = $conn->prepare("UPDATE wyniki SET miejsce = ? WHERE id = ?");
     if (!$upd) return;
 
     foreach ($z_wynikiem as $d) {
@@ -259,124 +378,118 @@ function przelicz_miejsca(mysqli $conn, int $id_wyscigu): void {
     $upd->close();
 }
 
-// Dodaj drużynę (miejsce obliczane automatycznie)
+// Pomocnicza: znajdź drużynę w globalnym spisie po nazwie, a jeśli nie istnieje — utwórz ją (szybkie dopisanie)
+function znajdz_lub_utworz_druzyne(mysqli $conn, string $nazwa): ?int {
+    if ($nazwa === '') return null;
+    $stmt = $conn->prepare("SELECT id FROM druzyny WHERE nazwa = ? LIMIT 1");
+    if (!$stmt) return null;
+    $stmt->bind_param("s", $nazwa);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if ($res && $res->num_rows > 0) {
+        $id = (int)$res->fetch_assoc()['id'];
+        $stmt->close();
+        return $id;
+    }
+    $stmt->close();
+
+    $ins = $conn->prepare("INSERT INTO druzyny (nazwa) VALUES (?)");
+    if (!$ins) return null;
+    $ins->bind_param("s", $nazwa);
+    $ins->execute();
+    $nowe_id = $conn->insert_id;
+    $ins->close();
+    return $nowe_id > 0 ? $nowe_id : null;
+}
+
+// Dodaj wynik drużyny w wyścigu (miejsce obliczane automatycznie)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_druzyna') {
     $id_wyscigu = (int)(isset($_POST['id_wyscigu']) ? $_POST['id_wyscigu'] : 0);
     $nazwa = trim(isset($_POST['nazwa_druzyny']) ? $_POST['nazwa_druzyny'] : '');
     $wynik = trim(isset($_POST['wynik_druzyny']) ? $_POST['wynik_druzyny'] : '');
-    $tor = isset($_POST['tor_druzyny']) ? intval($_POST['tor_druzyny']) : null;
-    $tor = ($tor === 0 || $tor === null) ? null : $tor;
+    $id_toru = (isset($_POST['id_toru']) && $_POST['id_toru'] !== '') ? (int)$_POST['id_toru'] : null;
 
     if ($id_wyscigu <= 0 || $nazwa === '') {
         $alert = "Podaj nazwę drużyny i wybierz wyścig.";
     } elseif ($wynik !== '' && !preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
         $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
     } else {
-        // Wstaw z miejscem = 0, zaraz przelicz
+        $id_druzyny = znajdz_lub_utworz_druzyne($conn, $nazwa);
+        $wynik_param = ($wynik === '') ? null : $wynik;
         $miejsce_tmp = 0;
-        if ($wynik === '') {
-            $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, tor, miejsce, id_wyscigu) VALUES (?, ?, ?, ?)");
-            if ($stmt) {
-                $stmt->bind_param("siii", $nazwa, $tor, $miejsce_tmp, $id_wyscigu);
-                if ($stmt->execute()) {
-                    przelicz_miejsca($conn, $id_wyscigu);
-                    header("Location: " . $_SERVER['PHP_SELF']);
-                    exit;
-                } else {
-                    $alert = "Błąd zapisu drużyny: " . $conn->error;
-                }
-                $stmt->close();
+        $tor_legacy  = 0; // kolumna historyczna, nowe wpisy korzystają z id_toru
+
+        $stmt = $conn->prepare("INSERT INTO wyniki (nazwa, id_druzyny, wynik, miejsce, tor, id_toru, id_wyscigu) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt) {
+            $stmt->bind_param("sisiiii", $nazwa, $id_druzyny, $wynik_param, $miejsce_tmp, $tor_legacy, $id_toru, $id_wyscigu);
+            if ($stmt->execute()) {
+                przelicz_miejsca($conn, $id_wyscigu);
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit;
             } else {
-                $alert = "Błąd przygotowania zapytania: " . $conn->error;
+                $alert = "Błąd zapisu wyniku: " . $conn->error;
             }
+            $stmt->close();
         } else {
-            $stmt = $conn->prepare("INSERT INTO druzyny (nazwa, wynik, tor, miejsce, id_wyscigu) VALUES (?, ?, ?, ?, ?)");
-            if ($stmt) {
-                $stmt->bind_param("ssiii", $nazwa, $wynik, $tor, $miejsce_tmp, $id_wyscigu);
-                if ($stmt->execute()) {
-                    przelicz_miejsca($conn, $id_wyscigu);
-                    header("Location: " . $_SERVER['PHP_SELF']);
-                    exit;
-                } else {
-                    $alert = "Błąd zapisu drużyny: " . $conn->error;
-                }
-                $stmt->close();
-            } else {
-                $alert = "Błąd przygotowania zapytania: " . $conn->error;
-            }
+            $alert = "Błąd przygotowania zapytania: " . $conn->error;
         }
     }
 }
 
-// Edytuj drużynę (miejsce obliczane automatycznie)
+// Edytuj wynik drużyny (miejsce obliczane automatycznie)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_druzyna') {
     $id = (int)(isset($_POST['id_druzyny_edit']) ? $_POST['id_druzyny_edit'] : 0);
     $nazwa = trim(isset($_POST['nazwa_druzyny_edit']) ? $_POST['nazwa_druzyny_edit'] : '');
     $wynik = trim(isset($_POST['wynik_druzyny_edit']) ? $_POST['wynik_druzyny_edit'] : '');
-    $tor = isset($_POST['tor_druzyny_edit']) ? intval($_POST['tor_druzyny_edit']) : null;
-    $tor = ($tor === 0 || $tor === null) ? null : $tor;
+    $id_toru = (isset($_POST['id_toru_edit']) && $_POST['id_toru_edit'] !== '') ? (int)$_POST['id_toru_edit'] : null;
 
     if ($id <= 0 || $nazwa === '') {
-        $alert = "Niepoprawne dane przy edycji drużyny.";
+        $alert = "Niepoprawne dane przy edycji wyniku.";
     } elseif ($wynik !== '' && !preg_match('/^\d{1,2}:\d{2},\d{3}$/', $wynik)) {
         $alert = "Wynik musi być w formacie MM:SS,mmm (np. 1:23,456).";
     } else {
-        // Pobierz id_wyscigu tej drużyny
-        $res_id = $conn->query("SELECT id_wyscigu FROM druzyny WHERE id = " . $id . " LIMIT 1");
+        // Pobierz id_wyscigu tego wpisu
+        $res_id = $conn->query("SELECT id_wyscigu FROM wyniki WHERE id = " . $id . " LIMIT 1");
         $id_wyscigu_tej = 0;
         if ($res_id && $r_id = $res_id->fetch_assoc()) {
             $id_wyscigu_tej = (int)$r_id['id_wyscigu'];
             $res_id->free();
         }
 
-        if ($wynik === '') {
-            $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = NULL, tor = ? WHERE id = ?");
-            if ($stmt) {
-                $stmt->bind_param("sii", $nazwa, $tor, $id);
-                if ($stmt->execute()) {
-                    if ($id_wyscigu_tej > 0) przelicz_miejsca($conn, $id_wyscigu_tej);
-                    header("Location: " . $_SERVER['PHP_SELF']);
-                    exit;
-                } else {
-                    $alert = "Błąd aktualizacji drużyny: " . $conn->error;
-                }
-                $stmt->close();
+        $id_druzyny = znajdz_lub_utworz_druzyne($conn, $nazwa);
+        $wynik_param = ($wynik === '') ? null : $wynik;
+
+        $stmt = $conn->prepare("UPDATE wyniki SET nazwa = ?, id_druzyny = ?, wynik = ?, id_toru = ? WHERE id = ?");
+        if ($stmt) {
+            $stmt->bind_param("sisii", $nazwa, $id_druzyny, $wynik_param, $id_toru, $id);
+            if ($stmt->execute()) {
+                if ($id_wyscigu_tej > 0) przelicz_miejsca($conn, $id_wyscigu_tej);
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit;
             } else {
-                $alert = "Błąd przygotowania zapytania: " . $conn->error;
+                $alert = "Błąd aktualizacji wyniku: " . $conn->error;
             }
+            $stmt->close();
         } else {
-            $stmt = $conn->prepare("UPDATE druzyny SET nazwa = ?, wynik = ?, tor = ? WHERE id = ?");
-            if ($stmt) {
-                $stmt->bind_param("ssii", $nazwa, $wynik, $tor, $id);
-                if ($stmt->execute()) {
-                    if ($id_wyscigu_tej > 0) przelicz_miejsca($conn, $id_wyscigu_tej);
-                    header("Location: " . $_SERVER['PHP_SELF']);
-                    exit;
-                } else {
-                    $alert = "Błąd aktualizacji drużyny: " . $conn->error;
-                }
-                $stmt->close();
-            } else {
-                $alert = "Błąd przygotowania zapytania: " . $conn->error;
-            }
+            $alert = "Błąd przygotowania zapytania: " . $conn->error;
         }
     }
 }
 
-// Usuń drużynę
+// Usuń wynik drużyny
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_druzyna') {
     $id = (int)(isset($_POST['id_druzyny_del']) ? $_POST['id_druzyny_del'] : 0);
     if ($id <= 0) {
-        $alert = "Niepoprawne id przy usuwaniu drużyny.";
+        $alert = "Niepoprawne id przy usuwaniu wyniku.";
     } else {
-        $stmt = $conn->prepare("DELETE FROM druzyny WHERE id = ?");
+        $stmt = $conn->prepare("DELETE FROM wyniki WHERE id = ?");
         if ($stmt) {
             $stmt->bind_param("i", $id);
             if ($stmt->execute()) {
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
             } else {
-                $alert = "Błąd usuwania drużyny: " . $conn->error;
+                $alert = "Błąd usuwania wyniku: " . $conn->error;
             }
             $stmt->close();
         } else {
@@ -387,6 +500,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // ---------------------- Pobranie danych ----------------------------
 
+function fetch_all(mysqli $conn, string $sql): array {
+    $out = [];
+    $res = $conn->query($sql);
+    if ($res) {
+        while ($r = $res->fetch_assoc()) $out[] = $r;
+        $res->free();
+    }
+    return $out;
+}
+
 $zawody = [];
 $res = $conn->query("SELECT id, nazwa, status FROM zawody ORDER BY id ASC");
 if ($res) {
@@ -394,9 +517,24 @@ if ($res) {
     $res->free();
 }
 
-// drużyny z polem tor (wszystkie)
+// Słowniki — kategorie, dystanse, fazy, tory, globalna lista drużyn
+$kategorie        = fetch_all($conn, "SELECT id, nazwa FROM kategorie ORDER BY nazwa ASC");
+$dystanse         = fetch_all($conn, "SELECT id, nazwa, metry FROM dystanse ORDER BY metry ASC, nazwa ASC");
+$fazy             = fetch_all($conn, "SELECT id, nazwa, kolejnosc FROM fazy ORDER BY kolejnosc ASC, nazwa ASC");
+$tory             = fetch_all($conn, "SELECT id, nazwa FROM tory ORDER BY nazwa ASC");
+$druzyny_globalne = fetch_all($conn, "SELECT id, nazwa FROM druzyny ORDER BY nazwa ASC");
+
+// Wyniki (dawniej tabela `druzyny`) wraz z rozwiązaną nazwą z globalnego spisu i nazwą toru
 $druzyny_by_wyscig = [];
-$res3 = $conn->query("SELECT id, nazwa, wynik, tor, miejsce, id_wyscigu FROM druzyny ORDER BY id_wyscigu ASC, miejsce ASC");
+$res3 = $conn->query("
+    SELECT wn.id, wn.nazwa, wn.id_druzyny, dg.nazwa AS nazwa_globalna,
+           wn.wynik, wn.tor AS tor_legacy, wn.id_toru, t.nazwa AS tor_nazwa,
+           wn.miejsce, wn.id_wyscigu
+    FROM wyniki wn
+    LEFT JOIN druzyny dg ON wn.id_druzyny = dg.id
+    LEFT JOIN tory t ON wn.id_toru = t.id
+    ORDER BY wn.id_wyscigu ASC, wn.miejsce ASC
+");
 if ($res3) {
     while ($row = $res3->fetch_assoc()) {
         $idw = (int)$row['id_wyscigu'];
@@ -416,9 +554,16 @@ if (!empty($selected_zawody_formularz) && (int)$selected_zawody_formularz > 0) {
     $where = ' WHERE w.id_zawodow = ' . (int)$selected_zawody_formularz;
 }
 $res2 = $conn->query("
-    SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z
+    SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z,
+           w.numer_globalny,
+           w.id_kategorii, k.nazwa AS nazwa_kategorii,
+           w.id_dystansu, d.nazwa AS nazwa_dystansu,
+           w.id_fazy, f.nazwa AS nazwa_fazy
     FROM wyscigi w
     LEFT JOIN zawody z ON w.id_zawodow = z.id
+    LEFT JOIN kategorie k ON w.id_kategorii = k.id
+    LEFT JOIN dystanse d ON w.id_dystansu = d.id
+    LEFT JOIN fazy f ON w.id_fazy = f.id
     $where
     ORDER BY w.id DESC
 ");
@@ -440,6 +585,7 @@ if ($res2) {
         .team-editable { cursor: pointer; }
         .archive-badge { font-size: 0.75rem; }
         .archive-item { opacity: 0.7; }
+        .wyscig-meta-badge { font-size: 0.7rem; }
     </style>
 </head>
 <body class="bg-light">
@@ -449,6 +595,7 @@ if ($res2) {
         <a class="navbar-brand" href="#">Panel zarządzania</a>
         <div class="ms-auto">
             <a href="index.php" class="btn btn-outline-light btn-sm me-2" target="_blank">Strona prezentacyjna</a>
+            <button type="button" class="btn btn-outline-light btn-sm me-2" data-bs-toggle="modal" data-bs-target="#klasyfikacjaModal">Klasyfikacja generalna</button>
             <form method="post" action="logout.php" class="d-inline">
                 <button class="btn btn-outline-light btn-sm" type="submit">Wyloguj</button>
             </form>
@@ -461,165 +608,441 @@ if ($res2) {
         <div class="alert alert-danger"><?php echo htmlspecialchars($alert); ?></div>
     <?php endif; ?>
 
-    <div class="row gy-4">
-        <div class="col-md-6">
-            <div class="card shadow-sm">
-                <div class="card-header"><strong>Dodaj nowe zawody</strong></div>
-                <div class="card-body">
-                    <form method="post">
-                        <input type="hidden" name="action" value="add_zawody">
-                        <div class="mb-3">
-                            <label class="form-label">Nazwa zawodów</label>
-                            <input type="text" name="nazwa_zawodow" class="form-control" required>
-                        </div>
-                        <button class="btn btn-primary">Dodaj zawody</button>
-                    </form>
-                </div>
-            </div>
+    <ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab-zawody-btn" data-bs-toggle="tab" data-bs-target="#tab-zawody" type="button" role="tab" aria-controls="tab-zawody" aria-selected="true">Zawody i wyścigi</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-slowniki-btn" data-bs-toggle="tab" data-bs-target="#tab-slowniki" type="button" role="tab" aria-controls="tab-slowniki" aria-selected="false">Słowniki</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-druzyny-btn" data-bs-toggle="tab" data-bs-target="#tab-druzyny" type="button" role="tab" aria-controls="tab-druzyny" aria-selected="false">Drużyny (globalnie)</button>
+        </li>
+    </ul>
 
-            <div class="card shadow-sm mt-3">
-                <div class="card-header"><strong>Lista zawodów (kliknij, aby zapamiętać wybór)</strong></div>
-                <div class="card-body p-0">
-                    <?php if (empty($zawody)): ?>
-                        <div class="p-3">Brak zawodów.</div>
-                    <?php else: ?>
-                        <div class="list-group list-group-flush">
-                            <?php foreach ($zawody as $z):
-                                $isActive = ($selected_zawody_formularz === (int)$z['id']);
-                                $isArchived = ($z['status'] === 'zarchiwizowane');
-                                $archiveClass = $isArchived ? ' archive-item' : '';
-                                $archiveButtonLabel = $isArchived ? '🔓 Aktywuj' : '🔒 Archiwizuj';
-                                ?>
-                                <div class="list-group-item d-flex justify-content-between align-items-center zawody-item<?php echo $isActive ? ' active' : ''; ?><?php echo $archiveClass; ?>"
-                                     data-id="<?php echo (int)$z['id']; ?>">
-                                    <div class="zawody-nazwa d-flex align-items-center">
-                                        <?php echo htmlspecialchars($z['nazwa']); ?>
-                                        <?php if ($isArchived): ?>
-                                            <span class="badge bg-secondary archive-badge ms-2">ARCHIWUM</span>
-                                        <?php endif; ?>
-                                    </div>
-                                    <div class="btn-group">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary edit-zawody-btn"
-                                                data-id="<?php echo (int)$z['id']; ?>"
-                                                data-nazwa="<?php echo htmlspecialchars($z['nazwa'], ENT_QUOTES); ?>">Edytuj</button>
-                                        <form method="post" style="display:inline;">
-                                            <input type="hidden" name="action" value="toggle_archive_zawody">
-                                            <input type="hidden" name="id_zawody" value="<?php echo (int)$z['id']; ?>">
-                                            <button class="btn btn-sm btn-outline-warning" type="submit"><?php echo $archiveButtonLabel; ?></button>
-                                        </form>
-                                        <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć zawody?');">
-                                            <input type="hidden" name="action" value="delete_zawody">
-                                            <input type="hidden" name="id_zawody_del" value="<?php echo (int)$z['id']; ?>">
-                                            <button class="btn btn-sm btn-outline-danger" type="submit">Usuń</button>
-                                        </form>
-                                    </div>
+    <div class="tab-content" id="mainTabsContent">
+        <div class="tab-pane fade show active" id="tab-zawody" role="tabpanel" aria-labelledby="tab-zawody-btn">
+
+            <div class="row gy-4">
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-header"><strong>Dodaj nowe zawody</strong></div>
+                        <div class="card-body">
+                            <form method="post">
+                                <input type="hidden" name="action" value="add_zawody">
+                                <div class="mb-3">
+                                    <label class="form-label">Nazwa zawodów</label>
+                                    <input type="text" name="nazwa_zawodow" class="form-control" required>
                                 </div>
-                            <?php endforeach; ?>
+                                <button class="btn btn-primary">Dodaj zawody</button>
+                            </form>
                         </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
+                    </div>
 
-        <div class="col-md-6">
-            <div class="card shadow-sm">
-                <div class="card-header"><strong>Dodaj wyścig</strong></div>
-                <div class="card-body">
-                    <form method="post">
-                        <input type="hidden" name="action" value="add_wyscig">
-                        <div class="mb-3">
-                            <label class="form-label">Wybierz zawody</label>
-                            <select name="id_zawodow" class="form-select" id="selectIdZawodow" required>
-                                <option value="">-- wybierz --</option>
-                                <?php foreach ($zawody as $z): ?>
-                                    <?php if ($z['status'] === 'aktywne'): ?>
-                                        <option value="<?php echo (int)$z['id']; ?>" <?php echo ($selected_zawody_formularz === (int)$z['id']) ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($z['nazwa']); ?>
-                                        </option>
-                                    <?php endif; ?>
-                                <?php endforeach; ?>
-                            </select>
-                            <div class="form-text">Kliknij zawody po lewej, aby ustawić domyślny wybór formularza. (Pokazane tylko aktywne zawody)</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Nazwa wyścigu</label>
-                            <input type="text" name="nazwa_wyscigu" class="form-control" required>
-                        </div>
-                        <button class="btn btn-success">Dodaj wyścig</button>
-                    </form>
-                </div>
-            </div>
-
-            <div class="card shadow-sm mt-3">
-                <div class="card-header"><strong>Lista wyścigów</strong></div>
-                <div class="card-body p-0">
-                    <?php if (empty($wyscigi)): ?>
-                        <div class="p-3">Brak wyścigów.</div>
-                    <?php else: ?>
-                        <table class="table mb-0">
-                            <thead>
-                            <tr><th style="width:45px">#</th><th>Wyścig</th><th>Zawody</th><th>Akcje</th></tr>
-                            </thead>
-                            <tbody>
-                            <?php foreach ($wyscigi as $w): ?>
-                                <tr class="wyscig-row" data-id="<?php echo (int)$w['id']; ?>" data-zawody="<?php echo (int)$w['id_zawodow']; ?>">
-                                    <td class="text-muted small"><?php echo (int)$w['id']; ?></td>
-                                    <td><?php echo htmlspecialchars($w['nazwa_w']); ?></td>
-                                    <td><?php echo htmlspecialchars(isset($w['nazwa_z']) ? $w['nazwa_z'] : '—'); ?></td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#addDruzynaModal"
-                                                    data-id="<?php echo (int)$w['id']; ?>" data-wyscignazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>">Dodaj drużynę</button>
-                                            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editWyscigModal"
-                                                    data-id="<?php echo (int)$w['id']; ?>" data-nazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>" data-idz="<?php echo (int)$w['id_zawodow']; ?>">Edytuj</button>
-                                            <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć wyścig?');">
-                                                <input type="hidden" name="action" value="delete_wyscig">
-                                                <input type="hidden" name="id_wyscigu_del" value="<?php echo (int)$w['id']; ?>">
-                                                <button class="btn btn-outline-danger" type="submit">Usuń</button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-
-                                <tr class="teams-row" data-wyscig="<?php echo (int)$w['id']; ?>">
-                                    <td colspan="4" class="small text-muted">
-                                        <?php
-                                        $teams = isset($druzyny_by_wyscig[(int)$w['id']]) ? $druzyny_by_wyscig[(int)$w['id']] : [];
-                                        if (empty($teams)) {
-                                            echo '<em>Brak drużyn.</em>';
-                                        } else {
-                                            echo '<table class="table table-sm mb-0">';
-                                            echo '<thead><tr><th style="width:60px">Miejsce</th><th>Nazwa</th><th style="width:60px">Tor</th><th style="width:120px">Wynik</th></tr></thead><tbody>';
-                                            foreach ($teams as $t) {
-                                                $team_id = (int)$t['id'];
-                                                $wynik = $t['wynik'];
-                                                $tor = $t['tor'];
-                                                $miejsce = (int)$t['miejsce'];
-                                                $nazwa_t = htmlspecialchars($t['nazwa']);
-                                                echo '<tr class="team-editable" data-team-id="' . $team_id . '" data-team-name="' . $nazwa_t . '" data-team-wynik="' . htmlspecialchars($wynik) . '" data-team-tor="' . htmlspecialchars($tor) . '" data-team-miejsce="' . $miejsce . '" data-team-wyscig="' . (int)$t['id_wyscigu'] . '">';
-                                                echo '<td>' . $miejsce . '</td>';
-                                                echo '<td>' . $nazwa_t . '</td>';
-                                                echo '<td>' . ($tor !== null && $tor !== '' ? htmlspecialchars($tor) : '—') . '</td>';
-                                                echo '<td>' . ($wynik !== null && $wynik !== '' ? htmlspecialchars($wynik) : '—') . '</td>';
-                                                echo '</tr>';
-                                            }
-                                            echo '</tbody></table>';
-                                        }
+                    <div class="card shadow-sm mt-3">
+                        <div class="card-header"><strong>Lista zawodów (kliknij, aby zapamiętać wybór)</strong></div>
+                        <div class="card-body p-0">
+                            <?php if (empty($zawody)): ?>
+                                <div class="p-3">Brak zawodów.</div>
+                            <?php else: ?>
+                                <div class="list-group list-group-flush">
+                                    <?php foreach ($zawody as $z):
+                                        $isActive = ($selected_zawody_formularz === (int)$z['id']);
+                                        $isArchived = ($z['status'] === 'zarchiwizowane');
+                                        $archiveClass = $isArchived ? ' archive-item' : '';
+                                        $archiveButtonLabel = $isArchived ? '🔓 Aktywuj' : '🔒 Archiwizuj';
                                         ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    <?php endif; ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-center zawody-item<?php echo $isActive ? ' active' : ''; ?><?php echo $archiveClass; ?>"
+                                             data-id="<?php echo (int)$z['id']; ?>">
+                                            <div class="zawody-nazwa d-flex align-items-center">
+                                                <?php echo htmlspecialchars($z['nazwa']); ?>
+                                                <?php if ($isArchived): ?>
+                                                    <span class="badge bg-secondary archive-badge ms-2">ARCHIWUM</span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="btn-group">
+                                                <button type="button" class="btn btn-sm btn-outline-secondary edit-zawody-btn"
+                                                        data-id="<?php echo (int)$z['id']; ?>"
+                                                        data-nazwa="<?php echo htmlspecialchars($z['nazwa'], ENT_QUOTES); ?>">Edytuj</button>
+                                                <form method="post" style="display:inline;">
+                                                    <input type="hidden" name="action" value="toggle_archive_zawody">
+                                                    <input type="hidden" name="id_zawody" value="<?php echo (int)$z['id']; ?>">
+                                                    <button class="btn btn-sm btn-outline-warning" type="submit"><?php echo $archiveButtonLabel; ?></button>
+                                                </form>
+                                                <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć zawody?');">
+                                                    <input type="hidden" name="action" value="delete_zawody">
+                                                    <input type="hidden" name="id_zawody_del" value="<?php echo (int)$z['id']; ?>">
+                                                    <button class="btn btn-sm btn-outline-danger" type="submit">Usuń</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-header"><strong>Dodaj wyścig</strong></div>
+                        <div class="card-body">
+                            <form method="post">
+                                <input type="hidden" name="action" value="add_wyscig">
+                                <div class="mb-3">
+                                    <label class="form-label">Wybierz zawody</label>
+                                    <select name="id_zawodow" class="form-select" id="selectIdZawodow" required>
+                                        <option value="">-- wybierz --</option>
+                                        <?php foreach ($zawody as $z): ?>
+                                            <?php if ($z['status'] === 'aktywne'): ?>
+                                                <option value="<?php echo (int)$z['id']; ?>" <?php echo ($selected_zawody_formularz === (int)$z['id']) ? 'selected' : ''; ?>>
+                                                    <?php echo htmlspecialchars($z['nazwa']); ?>
+                                                </option>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="form-text">Kliknij zawody po lewej, aby ustawić domyślny wybór formularza. (Pokazane tylko aktywne zawody)</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Nazwa wyścigu</label>
+                                    <input type="text" name="nazwa_wyscigu" class="form-control" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Numer globalny <span class="text-muted">(opcjonalnie)</span></label>
+                                    <input type="number" name="numer_globalny" class="form-control" min="1">
+                                </div>
+                                <div class="row g-2 mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Kategoria</label>
+                                        <select name="id_kategorii" class="form-select">
+                                            <option value="">— brak —</option>
+                                            <?php foreach ($kategorie as $k): ?>
+                                                <option value="<?php echo (int)$k['id']; ?>"><?php echo htmlspecialchars($k['nazwa']); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Dystans</label>
+                                        <select name="id_dystansu" class="form-select">
+                                            <option value="">— brak —</option>
+                                            <?php foreach ($dystanse as $d): ?>
+                                                <option value="<?php echo (int)$d['id']; ?>"><?php echo htmlspecialchars($d['nazwa']); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Faza</label>
+                                        <select name="id_fazy" class="form-select">
+                                            <option value="">— brak —</option>
+                                            <?php foreach ($fazy as $f): ?>
+                                                <option value="<?php echo (int)$f['id']; ?>"><?php echo htmlspecialchars($f['nazwa']); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-text">Słowniki kategorii/dystansów/faz uzupełnisz w zakładce „Słowniki”.</div>
+                                </div>
+                                <button class="btn btn-success">Dodaj wyścig</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm mt-3">
+                        <div class="card-header"><strong>Lista wyścigów</strong></div>
+                        <div class="card-body p-0">
+                            <?php if (empty($wyscigi)): ?>
+                                <div class="p-3">Brak wyścigów.</div>
+                            <?php else: ?>
+                                <table class="table mb-0">
+                                    <thead>
+                                    <tr><th style="width:45px">#</th><th>Wyścig</th><th>Zawody</th><th>Kategoria / dystans / faza</th><th>Akcje</th></tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($wyscigi as $w): ?>
+                                        <tr class="wyscig-row" data-id="<?php echo (int)$w['id']; ?>" data-zawody="<?php echo (int)$w['id_zawodow']; ?>">
+                                            <td class="text-muted small"><?php echo $w['numer_globalny'] !== null ? '#' . (int)$w['numer_globalny'] : (int)$w['id']; ?></td>
+                                            <td><?php echo htmlspecialchars($w['nazwa_w']); ?></td>
+                                            <td><?php echo htmlspecialchars(isset($w['nazwa_z']) ? $w['nazwa_z'] : '—'); ?></td>
+                                            <td>
+                                                <?php if (!empty($w['nazwa_kategorii'])): ?><span class="badge bg-primary-subtle text-primary-emphasis wyscig-meta-badge"><?php echo htmlspecialchars($w['nazwa_kategorii']); ?></span><?php endif; ?>
+                                                <?php if (!empty($w['nazwa_dystansu'])): ?><span class="badge bg-info-subtle text-info-emphasis wyscig-meta-badge"><?php echo htmlspecialchars($w['nazwa_dystansu']); ?></span><?php endif; ?>
+                                                <?php if (!empty($w['nazwa_fazy'])): ?><span class="badge bg-secondary-subtle text-secondary-emphasis wyscig-meta-badge"><?php echo htmlspecialchars($w['nazwa_fazy']); ?></span><?php endif; ?>
+                                                <?php if (empty($w['nazwa_kategorii']) && empty($w['nazwa_dystansu']) && empty($w['nazwa_fazy'])): ?><span class="text-muted small">—</span><?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm">
+                                                    <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#addDruzynaModal"
+                                                            data-id="<?php echo (int)$w['id']; ?>" data-wyscignazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>">Dodaj drużynę</button>
+                                                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editWyscigModal"
+                                                            data-id="<?php echo (int)$w['id']; ?>" data-nazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>" data-idz="<?php echo (int)$w['id_zawodow']; ?>"
+                                                            data-numerglobalny="<?php echo $w['numer_globalny'] !== null ? (int)$w['numer_globalny'] : ''; ?>"
+                                                            data-idkategorii="<?php echo $w['id_kategorii'] !== null ? (int)$w['id_kategorii'] : ''; ?>"
+                                                            data-iddystansu="<?php echo $w['id_dystansu'] !== null ? (int)$w['id_dystansu'] : ''; ?>"
+                                                            data-idfazy="<?php echo $w['id_fazy'] !== null ? (int)$w['id_fazy'] : ''; ?>">Edytuj</button>
+                                                    <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć wyścig?');">
+                                                        <input type="hidden" name="action" value="delete_wyscig">
+                                                        <input type="hidden" name="id_wyscigu_del" value="<?php echo (int)$w['id']; ?>">
+                                                        <button class="btn btn-outline-danger" type="submit">Usuń</button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <tr class="teams-row" data-wyscig="<?php echo (int)$w['id']; ?>">
+                                            <td colspan="5" class="small text-muted">
+                                                <?php
+                                                $teams = isset($druzyny_by_wyscig[(int)$w['id']]) ? $druzyny_by_wyscig[(int)$w['id']] : [];
+                                                if (empty($teams)) {
+                                                    echo '<em>Brak drużyn.</em>';
+                                                } else {
+                                                    echo '<table class="table table-sm mb-0">';
+                                                    echo '<thead><tr><th style="width:60px">Miejsce</th><th>Nazwa</th><th style="width:80px">Tor</th><th style="width:120px">Wynik</th></tr></thead><tbody>';
+                                                    foreach ($teams as $t) {
+                                                        $team_id = (int)$t['id'];
+                                                        $wynik = $t['wynik'];
+                                                        $miejsce = (int)$t['miejsce'];
+                                                        $nazwa_wyswietlana = !empty($t['nazwa_globalna']) ? $t['nazwa_globalna'] : $t['nazwa'];
+                                                        $nazwa_t = htmlspecialchars($nazwa_wyswietlana);
+
+                                                        $tor_label = '';
+                                                        if (!empty($t['tor_nazwa'])) {
+                                                            $tor_label = $t['tor_nazwa'];
+                                                        } elseif ($t['tor_legacy'] !== null && (int)$t['tor_legacy'] > 0) {
+                                                            $tor_label = (string)(int)$t['tor_legacy'];
+                                                        }
+
+                                                        echo '<tr class="team-editable" data-team-id="' . $team_id . '" data-team-name="' . $nazwa_t . '" data-team-wynik="' . htmlspecialchars($wynik) . '" data-team-idtoru="' . (int)($t['id_toru'] ?? 0) . '" data-team-miejsce="' . $miejsce . '" data-team-wyscig="' . (int)$t['id_wyscigu'] . '">';
+                                                        echo '<td>' . $miejsce . '</td>';
+                                                        echo '<td>' . $nazwa_t . '</td>';
+                                                        echo '<td>' . ($tor_label !== '' ? htmlspecialchars($tor_label) : '—') . '</td>';
+                                                        echo '<td>' . ($wynik !== null && $wynik !== '' ? htmlspecialchars($wynik) : '—') . '</td>';
+                                                        echo '</tr>';
+                                                    }
+                                                    echo '</tbody></table>';
+                                                }
+                                                ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
-        </div>
-    </div>
+        </div><!-- /tab-zawody -->
+
+        <div class="tab-pane fade" id="tab-slowniki" role="tabpanel" aria-labelledby="tab-slowniki-btn">
+            <div class="row gy-4">
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-header"><strong>Kategorie</strong></div>
+                        <div class="card-body">
+                            <form method="post" class="d-flex gap-2 mb-3">
+                                <input type="hidden" name="action" value="add_slownik">
+                                <input type="hidden" name="typ" value="kategoria">
+                                <input type="text" name="nazwa" class="form-control form-control-sm" placeholder="np. Senior Open" required>
+                                <button class="btn btn-sm btn-primary text-nowrap">Dodaj</button>
+                            </form>
+                            <ul class="list-group list-group-flush">
+                                <?php if (empty($kategorie)): ?>
+                                    <li class="list-group-item text-muted small">Brak kategorii.</li>
+                                <?php endif; ?>
+                                <?php foreach ($kategorie as $k): ?>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span><?php echo htmlspecialchars($k['nazwa']); ?></span>
+                                        <span class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary edit-slownik-btn"
+                                                data-typ="kategoria" data-id="<?php echo (int)$k['id']; ?>"
+                                                data-nazwa="<?php echo htmlspecialchars($k['nazwa'], ENT_QUOTES); ?>"
+                                                data-etykieta="kategorię">Edytuj</button>
+                                        <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć kategorię?');">
+                                            <input type="hidden" name="action" value="delete_slownik">
+                                            <input type="hidden" name="typ" value="kategoria">
+                                            <input type="hidden" name="id" value="<?php echo (int)$k['id']; ?>">
+                                            <button class="btn btn-outline-danger" type="submit">Usuń</button>
+                                        </form>
+                                    </span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm mt-3">
+                        <div class="card-header"><strong>Dystanse</strong></div>
+                        <div class="card-body">
+                            <form method="post" class="d-flex gap-2 mb-3">
+                                <input type="hidden" name="action" value="add_slownik">
+                                <input type="hidden" name="typ" value="dystans">
+                                <input type="text" name="nazwa" class="form-control form-control-sm" placeholder="np. 200m" required>
+                                <input type="number" name="metry" class="form-control form-control-sm" placeholder="metry" style="max-width:90px" min="1">
+                                <button class="btn btn-sm btn-primary text-nowrap">Dodaj</button>
+                            </form>
+                            <ul class="list-group list-group-flush">
+                                <?php if (empty($dystanse)): ?>
+                                    <li class="list-group-item text-muted small">Brak dystansów.</li>
+                                <?php endif; ?>
+                                <?php foreach ($dystanse as $d): ?>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span><?php echo htmlspecialchars($d['nazwa']); ?><?php if ($d['metry'] !== null): ?><span class="text-muted small"> — <?php echo (int)$d['metry']; ?> m</span><?php endif; ?></span>
+                                        <span class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary edit-slownik-btn"
+                                                data-typ="dystans" data-id="<?php echo (int)$d['id']; ?>"
+                                                data-nazwa="<?php echo htmlspecialchars($d['nazwa'], ENT_QUOTES); ?>"
+                                                data-metry="<?php echo $d['metry'] !== null ? (int)$d['metry'] : ''; ?>"
+                                                data-etykieta="dystans">Edytuj</button>
+                                        <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć dystans?');">
+                                            <input type="hidden" name="action" value="delete_slownik">
+                                            <input type="hidden" name="typ" value="dystans">
+                                            <input type="hidden" name="id" value="<?php echo (int)$d['id']; ?>">
+                                            <button class="btn btn-outline-danger" type="submit">Usuń</button>
+                                        </form>
+                                    </span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-header"><strong>Fazy</strong></div>
+                        <div class="card-body">
+                            <form method="post" class="d-flex gap-2 mb-3">
+                                <input type="hidden" name="action" value="add_slownik">
+                                <input type="hidden" name="typ" value="faza">
+                                <input type="text" name="nazwa" class="form-control form-control-sm" placeholder="np. Eliminacje" required>
+                                <input type="number" name="kolejnosc" class="form-control form-control-sm" placeholder="kolejność" style="max-width:110px">
+                                <button class="btn btn-sm btn-primary text-nowrap">Dodaj</button>
+                            </form>
+                            <div class="form-text mb-2 mt-n2">Pole „kolejność” decyduje o kolejności wyświetlania faz (np. Eliminacje=1, Repasaż=2, Ćwierćfinał=3, Półfinał=4, Finał=5).</div>
+                            <ul class="list-group list-group-flush">
+                                <?php if (empty($fazy)): ?>
+                                    <li class="list-group-item text-muted small">Brak faz.</li>
+                                <?php endif; ?>
+                                <?php foreach ($fazy as $f): ?>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span><?php echo htmlspecialchars($f['nazwa']); ?><?php if ($f['kolejnosc'] !== null): ?><span class="text-muted small"> (kolejność: <?php echo (int)$f['kolejnosc']; ?>)</span><?php endif; ?></span>
+                                        <span class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary edit-slownik-btn"
+                                                data-typ="faza" data-id="<?php echo (int)$f['id']; ?>"
+                                                data-nazwa="<?php echo htmlspecialchars($f['nazwa'], ENT_QUOTES); ?>"
+                                                data-kolejnosc="<?php echo $f['kolejnosc'] !== null ? (int)$f['kolejnosc'] : ''; ?>"
+                                                data-etykieta="fazę">Edytuj</button>
+                                        <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć fazę?');">
+                                            <input type="hidden" name="action" value="delete_slownik">
+                                            <input type="hidden" name="typ" value="faza">
+                                            <input type="hidden" name="id" value="<?php echo (int)$f['id']; ?>">
+                                            <button class="btn btn-outline-danger" type="submit">Usuń</button>
+                                        </form>
+                                    </span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm mt-3">
+                        <div class="card-header"><strong>Tory</strong></div>
+                        <div class="card-body">
+                            <form method="post" class="d-flex gap-2 mb-3">
+                                <input type="hidden" name="action" value="add_slownik">
+                                <input type="hidden" name="typ" value="tor">
+                                <input type="text" name="nazwa" class="form-control form-control-sm" placeholder="np. Tor 1" required>
+                                <button class="btn btn-sm btn-primary text-nowrap">Dodaj</button>
+                            </form>
+                            <ul class="list-group list-group-flush">
+                                <?php if (empty($tory)): ?>
+                                    <li class="list-group-item text-muted small">Brak torów.</li>
+                                <?php endif; ?>
+                                <?php foreach ($tory as $t): ?>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span><?php echo htmlspecialchars($t['nazwa']); ?></span>
+                                        <span class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary edit-slownik-btn"
+                                                data-typ="tor" data-id="<?php echo (int)$t['id']; ?>"
+                                                data-nazwa="<?php echo htmlspecialchars($t['nazwa'], ENT_QUOTES); ?>"
+                                                data-etykieta="tor">Edytuj</button>
+                                        <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć tor?');">
+                                            <input type="hidden" name="action" value="delete_slownik">
+                                            <input type="hidden" name="typ" value="tor">
+                                            <input type="hidden" name="id" value="<?php echo (int)$t['id']; ?>">
+                                            <button class="btn btn-outline-danger" type="submit">Usuń</button>
+                                        </form>
+                                    </span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /tab-slowniki -->
+
+        <div class="tab-pane fade" id="tab-druzyny" role="tabpanel" aria-labelledby="tab-druzyny-btn">
+            <div class="row gy-4">
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-header"><strong>Dodaj drużynę do globalnego spisu</strong></div>
+                        <div class="card-body">
+                            <form method="post" class="d-flex gap-2">
+                                <input type="hidden" name="action" value="add_slownik">
+                                <input type="hidden" name="typ" value="druzyna">
+                                <input type="text" name="nazwa" class="form-control" placeholder="Nazwa drużyny" required>
+                                <button class="btn btn-primary text-nowrap">Dodaj</button>
+                            </form>
+                            <div class="form-text mt-2">Drużyny dodane tutaj będą dostępne do wyboru (z podpowiadaniem) przy wpisywaniu wyników w zakładce „Zawody i wyścigi”. Nowe nazwy wpisane bezpośrednio przy wyniku też trafią automatycznie do tego spisu.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card shadow-sm">
+                        <div class="card-header"><strong>Globalny spis drużyn (<?php echo count($druzyny_globalne); ?>)</strong></div>
+                        <div class="card-body p-0" style="max-height:520px; overflow-y:auto;">
+                            <ul class="list-group list-group-flush">
+                                <?php if (empty($druzyny_globalne)): ?>
+                                    <li class="list-group-item text-muted small">Brak drużyn w spisie.</li>
+                                <?php endif; ?>
+                                <?php foreach ($druzyny_globalne as $dg): ?>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span><?php echo htmlspecialchars($dg['nazwa']); ?></span>
+                                        <span class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary edit-slownik-btn"
+                                                data-typ="druzyna" data-id="<?php echo (int)$dg['id']; ?>"
+                                                data-nazwa="<?php echo htmlspecialchars($dg['nazwa'], ENT_QUOTES); ?>"
+                                                data-etykieta="drużynę">Edytuj</button>
+                                        <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć drużynę z globalnego spisu? Wyniki, w których była użyta, zostaną zachowane pod swoją starą nazwą tekstową.');">
+                                            <input type="hidden" name="action" value="delete_slownik">
+                                            <input type="hidden" name="typ" value="druzyna">
+                                            <input type="hidden" name="id" value="<?php echo (int)$dg['id']; ?>">
+                                            <button class="btn btn-outline-danger" type="submit">Usuń</button>
+                                        </form>
+                                    </span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /tab-druzyny -->
+
+    </div><!-- /tab-content -->
 </div>
 
+<!-- Datalist z globalną listą drużyn — używana do podpowiadania/wyszukiwania przy wpisywaniu wyniku -->
+<datalist id="globalDruzynyList">
+    <?php foreach ($druzyny_globalne as $dg): ?>
+    <option value="<?php echo htmlspecialchars($dg['nazwa'], ENT_QUOTES); ?>">
+        <?php endforeach; ?>
+</datalist>
+
 <!-- ==================== MODALE ==================== -->
+
 
 <!-- Modal: Edytuj zawody -->
 <div class="modal fade" id="editZawodyModal" tabindex="-1" aria-labelledby="editZawodyModalLabel" aria-hidden="true">
@@ -673,6 +1096,39 @@ if ($res2) {
                         <label class="form-label">Nazwa wyścigu</label>
                         <input type="text" name="nazwa_wyscigu_edit" id="editWyscigNazwa" class="form-control" required>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Numer globalny <span class="text-muted">(opcjonalnie)</span></label>
+                        <input type="number" name="numer_globalny_edit" id="editWyscigNumerGlobalny" class="form-control" min="1">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label">Kategoria</label>
+                            <select name="id_kategorii_edit" id="editWyscigKategoria" class="form-select">
+                                <option value="">— brak —</option>
+                                <?php foreach ($kategorie as $k): ?>
+                                    <option value="<?php echo (int)$k['id']; ?>"><?php echo htmlspecialchars($k['nazwa']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Dystans</label>
+                            <select name="id_dystansu_edit" id="editWyscigDystans" class="form-select">
+                                <option value="">— brak —</option>
+                                <?php foreach ($dystanse as $d): ?>
+                                    <option value="<?php echo (int)$d['id']; ?>"><?php echo htmlspecialchars($d['nazwa']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Faza</label>
+                            <select name="id_fazy_edit" id="editWyscigFaza" class="form-select">
+                                <option value="">— brak —</option>
+                                <?php foreach ($fazy as $f): ?>
+                                    <option value="<?php echo (int)$f['id']; ?>"><?php echo htmlspecialchars($f['nazwa']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
@@ -697,11 +1153,17 @@ if ($res2) {
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Nazwa drużyny</label>
-                        <input type="text" name="nazwa_druzyny" id="addDruzynaNazwa" class="form-control" required>
+                        <input type="text" name="nazwa_druzyny" id="addDruzynaNazwa" class="form-control" list="globalDruzynyList" autocomplete="off" required>
+                        <div class="form-text">Zacznij pisać, aby wyszukać istniejącą drużynę — jeśli takiej nazwy jeszcze nie ma, zostanie automatycznie dodana do globalnego spisu.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Tor</label>
-                        <input type="number" name="tor_druzyny" id="addDruzynaTor" class="form-control" min="1" placeholder="(opcjonalnie)">
+                        <select name="id_toru" id="addDruzynaTor" class="form-select">
+                            <option value="">— brak —</option>
+                            <?php foreach ($tory as $t): ?>
+                                <option value="<?php echo (int)$t['id']; ?>"><?php echo htmlspecialchars($t['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Wynik <span class="text-muted">(MM:SS,mmm, np. 1:23,456)</span></label>
@@ -737,11 +1199,17 @@ if ($res2) {
                     <p class="text-muted small mb-3" id="editDruzynaWyscigName"></p>
                     <div class="mb-3">
                         <label class="form-label">Nazwa drużyny</label>
-                        <input type="text" name="nazwa_druzyny_edit" id="editDruzynaNazwa" class="form-control" required>
+                        <input type="text" name="nazwa_druzyny_edit" id="editDruzynaNazwa" class="form-control" list="globalDruzynyList" autocomplete="off" required>
+                        <div class="form-text">Zacznij pisać, aby wyszukać istniejącą drużynę — jeśli takiej nazwy jeszcze nie ma, zostanie automatycznie dodana do globalnego spisu.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Tor</label>
-                        <input type="number" name="tor_druzyny_edit" id="editDruzynaTor" class="form-control" min="1" placeholder="(opcjonalnie)">
+                        <select name="id_toru_edit" id="editDruzynaTor" class="form-select">
+                            <option value="">— brak —</option>
+                            <?php foreach ($tory as $t): ?>
+                                <option value="<?php echo (int)$t['id']; ?>"><?php echo htmlspecialchars($t['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Wynik <span class="text-muted">(MM:SS,mmm, np. 1:23,456)</span></label>
@@ -763,6 +1231,96 @@ if ($res2) {
                 <input type="hidden" name="action" value="delete_druzyna">
                 <input type="hidden" name="id_druzyny_del" id="deleteDruzynaId">
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Edytuj pozycję słownika (kategoria/dystans/faza/tor/drużyna globalna) -->
+<div class="modal fade" id="editSlownikModal" tabindex="-1" aria-labelledby="editSlownikLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editSlownikLabel">Edytuj</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <form method="post">
+                <input type="hidden" name="action" value="edit_slownik">
+                <input type="hidden" name="typ" id="editSlownikTyp">
+                <input type="hidden" name="id" id="editSlownikId">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nazwa</label>
+                        <input type="text" name="nazwa" id="editSlownikNazwa" class="form-control" required>
+                    </div>
+                    <div class="mb-3 d-none" id="editSlownikMetryWrap">
+                        <label class="form-label">Metry</label>
+                        <input type="number" name="metry" id="editSlownikMetry" class="form-control" min="1">
+                    </div>
+                    <div class="mb-3 d-none" id="editSlownikKolejnoscWrap">
+                        <label class="form-label">Kolejność wyświetlania</label>
+                        <input type="number" name="kolejnosc" id="editSlownikKolejnosc" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="submit" class="btn btn-primary">Zapisz</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Klasyfikacja generalna -->
+<div class="modal fade" id="klasyfikacjaModal" tabindex="-1" aria-labelledby="klasyfikacjaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="klasyfikacjaModalLabel">Klasyfikacja generalna</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Kategoria</label>
+                        <select id="klasKategoria" class="form-select">
+                            <option value="">-- wybierz --</option>
+                            <?php foreach ($kategorie as $k): ?>
+                                <option value="<?php echo (int)$k['id']; ?>"><?php echo htmlspecialchars($k['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Dystans</label>
+                        <select id="klasDystans" class="form-select">
+                            <option value="">-- wybierz --</option>
+                            <?php foreach ($dystanse as $d): ?>
+                                <option value="<?php echo (int)$d['id']; ?>"><?php echo htmlspecialchars($d['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Faza</label>
+                        <select id="klasFaza" class="form-select">
+                            <option value="">-- wybierz --</option>
+                            <?php foreach ($fazy as $f): ?>
+                                <option value="<?php echo (int)$f['id']; ?>"><?php echo htmlspecialchars($f['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <?php if (empty($kategorie) || empty($dystanse) || empty($fazy)): ?>
+                    <div class="alert alert-warning py-2 px-3" style="font-size:0.9rem;">
+                        Uzupełnij najpierw słowniki kategorii / dystansów / faz w zakładce „Słowniki”, a następnie przypisz je do wyścigów (przycisk „Edytuj” przy wyścigu) — dopiero wtedy ranking będzie miał z czego liczyć.
+                    </div>
+                <?php endif; ?>
+                <div class="text-center mb-3">
+                    <button type="button" class="btn btn-primary" id="btnGenerujRanking">Generuj ranking</button>
+                </div>
+                <div id="klasyfikacjaWynik"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Powrót</button>
+            </div>
         </div>
     </div>
 </div>
@@ -816,6 +1374,10 @@ if ($res2) {
                 document.getElementById('editWyscigNazwa').value = button.getAttribute('data-nazwa') || '';
                 var sel = document.getElementById('editWyscigZawody');
                 if (sel) sel.value = button.getAttribute('data-idz') || '';
+                document.getElementById('editWyscigNumerGlobalny').value = button.getAttribute('data-numerglobalny') || '';
+                document.getElementById('editWyscigKategoria').value = button.getAttribute('data-idkategorii') || '';
+                document.getElementById('editWyscigDystans').value = button.getAttribute('data-iddystansu') || '';
+                document.getElementById('editWyscigFaza').value = button.getAttribute('data-idfazy') || '';
             });
         }
 
@@ -871,7 +1433,8 @@ if ($res2) {
             if (!row) return;
             document.getElementById('editDruzynaId').value = row.getAttribute('data-team-id') || '';
             document.getElementById('editDruzynaNazwa').value = row.getAttribute('data-team-name') || '';
-            document.getElementById('editDruzynaTor').value = row.getAttribute('data-team-tor') || '';
+            var idToru = row.getAttribute('data-team-idtoru') || '0';
+            document.getElementById('editDruzynaTor').value = (idToru === '0' ? '' : idToru);
             var wynikVal = row.getAttribute('data-team-wynik') || '';
             document.getElementById('editDruzynaWynik').value = wynikVal;
             document.getElementById('editWynikFeedback').textContent = '';
@@ -890,6 +1453,91 @@ if ($res2) {
                 if (!confirm('Na pewno usunąć tę drużynę?')) return;
                 document.getElementById('deleteDruzynaId').value = document.getElementById('editDruzynaId').value;
                 document.getElementById('formDeleteDruzyna').submit();
+            });
+        }
+
+        // --- Modal: Edytuj pozycję słownika (kategoria/dystans/faza/tor/drużyna) ---
+        document.querySelectorAll('.edit-slownik-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var typ = btn.getAttribute('data-typ') || '';
+                document.getElementById('editSlownikTyp').value = typ;
+                document.getElementById('editSlownikId').value = btn.getAttribute('data-id') || '';
+                document.getElementById('editSlownikNazwa').value = btn.getAttribute('data-nazwa') || '';
+                document.getElementById('editSlownikLabel').textContent = 'Edytuj ' + (btn.getAttribute('data-etykieta') || '');
+
+                var metryWrap = document.getElementById('editSlownikMetryWrap');
+                var kolejnoscWrap = document.getElementById('editSlownikKolejnoscWrap');
+                metryWrap.classList.add('d-none');
+                kolejnoscWrap.classList.add('d-none');
+
+                if (typ === 'dystans') {
+                    metryWrap.classList.remove('d-none');
+                    document.getElementById('editSlownikMetry').value = btn.getAttribute('data-metry') || '';
+                } else if (typ === 'faza') {
+                    kolejnoscWrap.classList.remove('d-none');
+                    document.getElementById('editSlownikKolejnosc').value = btn.getAttribute('data-kolejnosc') || '';
+                }
+
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('editSlownikModal')).show();
+            });
+        });
+
+        // --- Klasyfikacja generalna: generowanie rankingu ---
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.textContent = (str === null || str === undefined) ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        var btnGenerujRanking = document.getElementById('btnGenerujRanking');
+        if (btnGenerujRanking) {
+            btnGenerujRanking.addEventListener('click', function () {
+                var idk = document.getElementById('klasKategoria').value;
+                var idd = document.getElementById('klasDystans').value;
+                var idf = document.getElementById('klasFaza').value;
+                var wynikEl = document.getElementById('klasyfikacjaWynik');
+
+                if (!idk || !idd || !idf) {
+                    wynikEl.innerHTML = '<div class="alert alert-warning py-2 mb-0">Wybierz kategorię, dystans i fazę.</div>';
+                    return;
+                }
+
+                wynikEl.innerHTML = '<div class="text-center text-muted py-3">Generowanie rankingu…</div>';
+
+                fetch('ajax_get_klasyfikacja.php?id_kategorii=' + encodeURIComponent(idk) +
+                    '&id_dystansu=' + encodeURIComponent(idd) +
+                    '&id_fazy=' + encodeURIComponent(idf))
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.error) {
+                            wynikEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + escapeHtml(data.error) + '</div>';
+                            return;
+                        }
+                        if (!data.ranking || data.ranking.length === 0) {
+                            wynikEl.innerHTML = '<div class="alert alert-secondary py-2 mb-0">Brak wyników spełniających wybrane kryteria.</div>';
+                            return;
+                        }
+                        var html = '<table class="table table-striped table-sm align-middle mb-0"><thead><tr>' +
+                            '<th style="width:50px">#</th><th>Drużyna</th><th>Wyścig</th><th class="text-end">Czas</th>' +
+                            '</tr></thead><tbody>';
+                        data.ranking.forEach(function (row) {
+                            html += '<tr><td>' + (row.miejsce <= 3 ? '🏅 ' : '') + row.miejsce + '</td><td>' + escapeHtml(row.nazwa_druzyny) +
+                                '</td><td class="text-muted small">' + escapeHtml(row.nazwa_wyscigu) + '</td><td class="text-end">' + escapeHtml(row.wynik) + '</td></tr>';
+                        });
+                        html += '</tbody></table>';
+                        wynikEl.innerHTML = html;
+                    })
+                    .catch(function (err) {
+                        wynikEl.innerHTML = '<div class="alert alert-danger py-2 mb-0">Błąd połączenia: ' + escapeHtml(err.message) + '</div>';
+                    });
+            });
+        }
+
+        // Wyczyść ranking przy każdym otwarciu modala od nowa
+        var klasyfikacjaModal = document.getElementById('klasyfikacjaModal');
+        if (klasyfikacjaModal) {
+            klasyfikacjaModal.addEventListener('show.bs.modal', function () {
+                document.getElementById('klasyfikacjaWynik').innerHTML = '';
             });
         }
 

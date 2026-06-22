@@ -41,9 +41,21 @@ if ($res) {
     $res->free();
 }
 
-// Pobierz drużyny
+// Pobierz wyniki (dawniej tabela druzyny) wraz z nazwą drużyny globalnej i nazwą toru, jeśli przypisane
 $druzyny_by_wyscig = [];
-$res3 = $conn->query("SELECT id, nazwa, wynik, tor, miejsce, id_wyscigu FROM druzyny ORDER BY id_wyscigu ASC, miejsce ASC");
+$res3 = $conn->query("
+    SELECT wn.id,
+           COALESCE(dg.nazwa, wn.nazwa) AS nazwa,
+           wn.wynik,
+           wn.tor AS tor_legacy,
+           t.nazwa AS tor_nazwa,
+           wn.miejsce,
+           wn.id_wyscigu
+    FROM wyniki wn
+    LEFT JOIN druzyny dg ON wn.id_druzyny = dg.id
+    LEFT JOIN tory t ON wn.id_toru = t.id
+    ORDER BY wn.id_wyscigu ASC, wn.miejsce ASC
+");
 if ($res3) {
     while ($row = $res3->fetch_assoc()) {
         $idw = (int)$row['id_wyscigu'];
@@ -77,8 +89,15 @@ if (count($wyscigi) === 0) {
             foreach ($teams as $t) {
                 $miejsce = (int)$t['miejsce'];
                 $wynik   = $t['wynik'];
-                $tor     = $t['tor'];
                 $nazwa_t = htmlspecialchars($t['nazwa']);
+
+                // Etykieta toru: priorytet ma nazwa z tabeli `tory`, fallback do starej kolumny liczbowej
+                $tor_label = '';
+                if ($t['tor_nazwa'] !== null && $t['tor_nazwa'] !== '') {
+                    $tor_label = $t['tor_nazwa'];
+                } elseif ($t['tor_legacy'] !== null && (int)$t['tor_legacy'] > 0) {
+                    $tor_label = (string)(int)$t['tor_legacy'];
+                }
 
                 // klasa medalu
                 $medal = '';
@@ -90,8 +109,8 @@ if (count($wyscigi) === 0) {
                 echo '<td style="text-align:center"><span class="place-badge ' . $medal . '">' . $miejsce . '</span></td>';
                 echo '<td><span class="team-name">' . $nazwa_t . '</span></td>';
                 echo '<td style="text-align:center">';
-                echo ($tor !== null && $tor !== '' && (int)$tor > 0)
-                    ? '<span class="lane-badge">' . (int)$tor . '</span>'
+                echo ($tor_label !== '')
+                    ? '<span class="lane-badge">' . htmlspecialchars($tor_label) . '</span>'
                     : '<span style="color:#ccc">—</span>';
                 echo '</td>';
                 echo '<td style="text-align:right">';
