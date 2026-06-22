@@ -14,21 +14,28 @@ $alert = "";
 
 // Dodaj nowe zawody
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_zawody') {
-    $nazwa = trim(isset($_POST['nazwa_zawodow']) ? $_POST['nazwa_zawodow'] : '');
+    $nazwa    = trim(isset($_POST['nazwa_zawodow']) ? $_POST['nazwa_zawodow'] : '');
+    $is_ajax  = !empty($_POST['ajax']);
+    if ($is_ajax) header('Content-Type: application/json; charset=utf-8');
     if ($nazwa === '') {
+        if ($is_ajax) { echo json_encode(['success' => false, 'error' => 'Podaj nazwę zawodów.']); exit; }
         $alert = "Podaj nazwę zawodów.";
     } else {
         $stmt = $conn->prepare("INSERT INTO zawody (nazwa, status) VALUES (?, 'aktywne')");
         if ($stmt) {
             $stmt->bind_param("s", $nazwa);
             if ($stmt->execute()) {
-                header("Location: " . $_SERVER['PHP_SELF']);
-                exit;
+                $new_id = (int)$conn->insert_id;
+                $stmt->close();
+                if ($is_ajax) { echo json_encode(['success' => true, 'id' => $new_id, 'nazwa' => $nazwa]); exit; }
+                header("Location: " . $_SERVER['PHP_SELF']); exit;
             } else {
-                $alert = "Błąd zapisu zawodów: " . $conn->error;
+                $db_err = $conn->error; $stmt->close();
+                if ($is_ajax) { echo json_encode(['success' => false, 'error' => 'Błąd zapisu: ' . $db_err]); exit; }
+                $alert = "Błąd zapisu zawodów: " . $db_err;
             }
-            $stmt->close();
         } else {
+            if ($is_ajax) { echo json_encode(['success' => false, 'error' => 'Błąd przygotowania zapytania.']); exit; }
             $alert = "Błąd przygotowania zapytania: " . $conn->error;
         }
     }
@@ -154,10 +161,16 @@ $slowniki_tabele = [
 
 // Dodaj pozycję słownika
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_slownik') {
-    $typ = isset($_POST['typ']) ? $_POST['typ'] : '';
-    $nazwa = trim(isset($_POST['nazwa']) ? $_POST['nazwa'] : '');
+    $typ    = isset($_POST['typ'])   ? $_POST['typ']             : '';
+    $nazwa  = trim(isset($_POST['nazwa']) ? $_POST['nazwa']      : '');
+    $is_ajax = !empty($_POST['ajax']);
+
+    if ($is_ajax) {
+        header('Content-Type: application/json; charset=utf-8');
+    }
 
     if (!isset($slowniki_tabele[$typ]) || $nazwa === '') {
+        if ($is_ajax) { echo json_encode(['success' => false, 'error' => 'Podaj nazwę.']); exit; }
         $alert = "Podaj nazwę.";
     } else {
         $stmt = null;
@@ -177,13 +190,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         if ($stmt) {
             if ($stmt->execute()) {
+                $new_id = (int)$conn->insert_id;
+                $stmt->close();
+                if ($is_ajax) {
+                    echo json_encode(['success' => true, 'id' => $new_id, 'nazwa' => $nazwa]);
+                    exit;
+                }
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
             } else {
-                $alert = "Błąd zapisu: " . $conn->error;
+                $db_err = $conn->error;
+                $stmt->close();
+                if ($is_ajax) { echo json_encode(['success' => false, 'error' => 'Błąd zapisu: ' . $db_err]); exit; }
+                $alert = "Błąd zapisu: " . $db_err;
             }
-            $stmt->close();
         } else {
+            if ($is_ajax) { echo json_encode(['success' => false, 'error' => 'Błąd przygotowania zapytania.']); exit; }
             $alert = "Błąd przygotowania zapytania: " . $conn->error;
         }
     }
@@ -578,6 +600,7 @@ if ($res2) {
     <meta charset="utf-8">
     <title>Zarządzanie zawodami i wyścigami</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
     <style>
         .zawody-item { cursor: pointer; }
         .list-group-flush .list-group-item.active { background-color: #0d6efd; color: #fff; }
@@ -586,6 +609,9 @@ if ($res2) {
         .archive-badge { font-size: 0.75rem; }
         .archive-item { opacity: 0.7; }
         .wyscig-meta-badge { font-size: 0.7rem; }
+        /* Tom Select nad modalem Bootstrap (modal ma z-index 1055) */
+        .ts-dropdown { z-index: 2000 !important; }
+        .ts-wrapper.single .ts-control { cursor: pointer; }
     </style>
 </head>
 <body class="bg-light">
@@ -613,7 +639,7 @@ if ($res2) {
             <button class="nav-link active" id="tab-zawody-btn" data-bs-toggle="tab" data-bs-target="#tab-zawody" type="button" role="tab" aria-controls="tab-zawody" aria-selected="true">Zawody i wyścigi</button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-slowniki-btn" data-bs-toggle="tab" data-bs-target="#tab-slowniki" type="button" role="tab" aria-controls="tab-slowniki" aria-selected="false">Słowniki</button>
+            <button class="nav-link" id="tab-slowniki-btn" data-bs-toggle="tab" data-bs-target="#tab-slowniki" type="button" role="tab" aria-controls="tab-slowniki" aria-selected="false">Ustawienia</button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="tab-druzyny-btn" data-bs-toggle="tab" data-bs-target="#tab-druzyny" type="button" role="tab" aria-controls="tab-druzyny" aria-selected="false">Drużyny (globalnie)</button>
@@ -714,7 +740,7 @@ if ($res2) {
                                 <div class="row g-2 mb-3">
                                     <div class="col-md-4">
                                         <label class="form-label">Kategoria</label>
-                                        <select name="id_kategorii" class="form-select">
+                                        <select name="id_kategorii" id="addWyscigKategoria" class="form-select">
                                             <option value="">— brak —</option>
                                             <?php foreach ($kategorie as $k): ?>
                                                 <option value="<?php echo (int)$k['id']; ?>"><?php echo htmlspecialchars($k['nazwa']); ?></option>
@@ -723,7 +749,7 @@ if ($res2) {
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label">Dystans</label>
-                                        <select name="id_dystansu" class="form-select">
+                                        <select name="id_dystansu" id="addWyscigDystans" class="form-select">
                                             <option value="">— brak —</option>
                                             <?php foreach ($dystanse as $d): ?>
                                                 <option value="<?php echo (int)$d['id']; ?>"><?php echo htmlspecialchars($d['nazwa']); ?></option>
@@ -732,14 +758,14 @@ if ($res2) {
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label">Faza</label>
-                                        <select name="id_fazy" class="form-select">
+                                        <select name="id_fazy" id="addWyscigFaza" class="form-select">
                                             <option value="">— brak —</option>
                                             <?php foreach ($fazy as $f): ?>
                                                 <option value="<?php echo (int)$f['id']; ?>"><?php echo htmlspecialchars($f['nazwa']); ?></option>
                                             <?php endforeach; ?>
                                         </select>
                                     </div>
-                                    <div class="form-text">Słowniki kategorii/dystansów/faz uzupełnisz w zakładce „Słowniki”.</div>
+                                    <div class="form-text">Kategorie, dystanse i fazy uzupełnisz w zakładce „Ustawienia”.</div>
                                 </div>
                                 <button class="btn btn-success">Dodaj wyścig</button>
                             </form>
@@ -1034,13 +1060,6 @@ if ($res2) {
     </div><!-- /tab-content -->
 </div>
 
-<!-- Datalist z globalną listą drużyn — używana do podpowiadania/wyszukiwania przy wpisywaniu wyniku -->
-<datalist id="globalDruzynyList">
-    <?php foreach ($druzyny_globalne as $dg): ?>
-    <option value="<?php echo htmlspecialchars($dg['nazwa'], ENT_QUOTES); ?>">
-        <?php endforeach; ?>
-</datalist>
-
 <!-- ==================== MODALE ==================== -->
 
 
@@ -1153,8 +1172,13 @@ if ($res2) {
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Nazwa drużyny</label>
-                        <input type="text" name="nazwa_druzyny" id="addDruzynaNazwa" class="form-control" list="globalDruzynyList" autocomplete="off" required>
-                        <div class="form-text">Zacznij pisać, aby wyszukać istniejącą drużynę — jeśli takiej nazwy jeszcze nie ma, zostanie automatycznie dodana do globalnego spisu.</div>
+                        <select name="nazwa_druzyny" id="addDruzynaNazwa">
+                            <option value=""></option>
+                            <?php foreach ($druzyny_globalne as $dg): ?>
+                                <option value="<?php echo htmlspecialchars($dg['nazwa'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($dg['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text">Wyszukaj z listy lub wpisz nową nazwę — zostanie automatycznie dodana do globalnego spisu.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Tor</label>
@@ -1199,8 +1223,13 @@ if ($res2) {
                     <p class="text-muted small mb-3" id="editDruzynaWyscigName"></p>
                     <div class="mb-3">
                         <label class="form-label">Nazwa drużyny</label>
-                        <input type="text" name="nazwa_druzyny_edit" id="editDruzynaNazwa" class="form-control" list="globalDruzynyList" autocomplete="off" required>
-                        <div class="form-text">Zacznij pisać, aby wyszukać istniejącą drużynę — jeśli takiej nazwy jeszcze nie ma, zostanie automatycznie dodana do globalnego spisu.</div>
+                        <select name="nazwa_druzyny_edit" id="editDruzynaNazwa">
+                            <option value=""></option>
+                            <?php foreach ($druzyny_globalne as $dg): ?>
+                                <option value="<?php echo htmlspecialchars($dg['nazwa'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($dg['nazwa']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text">Wyszukaj z listy lub wpisz nową nazwę — zostanie automatycznie dodana do globalnego spisu.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Tor</label>
@@ -1310,7 +1339,7 @@ if ($res2) {
                 </div>
                 <?php if (empty($kategorie) || empty($dystanse) || empty($fazy)): ?>
                     <div class="alert alert-warning py-2 px-3" style="font-size:0.9rem;">
-                        Uzupełnij najpierw słowniki kategorii / dystansów / faz w zakładce „Słowniki”, a następnie przypisz je do wyścigów (przycisk „Edytuj” przy wyścigu) — dopiero wtedy ranking będzie miał z czego liczyć.
+                        Uzupełnij najpierw kategorie, dystanse i fazy w zakładce „Ustawienia”, a następnie przypisz je do wyścigów (przycisk „Edytuj” przy wyścigu) — dopiero wtedy ranking będzie miał z czego liczyć.
                     </div>
                 <?php endif; ?>
                 <div class="text-center mb-3">
@@ -1327,6 +1356,7 @@ if ($res2) {
 
 <!-- ==================== SKRYPTY ==================== -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script>
     function setCookie(name, value, days) {
         var expires = "";
@@ -1350,6 +1380,127 @@ if ($res2) {
 
     (function () {
 
+        // --- Pamiętaj aktywną zakładkę po przeładowaniu strony ---
+        // Po kliknięciu "Dodaj" strona się przeładowuje — sessionStorage przywraca zakładkę automatycznie.
+        document.querySelectorAll('#mainTabs button[data-bs-toggle="tab"]').forEach(function (btn) {
+            btn.addEventListener('shown.bs.tab', function () {
+                sessionStorage.setItem('activeTab', btn.getAttribute('data-bs-target'));
+            });
+        });
+        var savedTab = sessionStorage.getItem('activeTab');
+        if (savedTab) {
+            var savedBtn = document.querySelector('#mainTabs button[data-bs-target="' + savedTab + '"]');
+            if (savedBtn) bootstrap.Tab.getOrCreateInstance(savedBtn).show();
+        }
+
+        // --- Tom Select: lista rozwijana z wyszukiwaniem dla pola Drużyna ---
+        var tomSelectBaseOptions = {
+            create: true,          // pozwala wpisać nową drużynę spoza listy
+            createOnBlur: false,
+            maxItems: 1,
+            placeholder: 'Wyszukaj lub wpisz nową drużynę…',
+            createFilter: /\S+/,   // nie twórz pustych opcji
+            render: {
+                option_create: function (data, escape) {
+                    return '<div class="create">Dodaj: <strong>' + escape(data.input) + '</strong></div>';
+                },
+                no_results: function (data, escape) {
+                    return '<div class="no-results">Brak wyników dla „' + escape(data.input) + '"</div>';
+                }
+            }
+        };
+
+        var tomAddDruzyna  = new TomSelect('#addDruzynaNazwa',  Object.assign({}, tomSelectBaseOptions));
+        var tomEditDruzyna = new TomSelect('#editDruzynaNazwa', Object.assign({}, tomSelectBaseOptions));
+
+        // --- Tom Select: zwykłe listy wyboru (bez tworzenia nowych opcji) ---
+        var tsPickOptions = {
+            create: false,
+            allowEmptyOption: true,
+            maxItems: 1,
+            sortField: { field: '$order', direction: 'asc' }, // zachowaj kolejność z DOM
+            render: {
+                no_results: function (data, escape) {
+                    return '<div class="no-results">Brak wyników dla „' + escape(data.input) + '"</div>';
+                }
+            }
+        };
+
+        // ── Pomocnicze funkcje do szybkiego dodawania z poziomu listy ────────────
+
+        // Tworzy funkcję create dla Tom Select → AJAX do tabeli słownikowej
+        function makeTsQuickAdd(typ, labelDop) {
+            return function (input, callback) {
+                var fd = new FormData();
+                fd.append('action', 'add_slownik');
+                fd.append('typ',    typ);
+                fd.append('nazwa',  input);
+                fd.append('ajax',   '1');
+                fetch('management.php', { method: 'POST', body: fd })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.success) callback({ value: String(data.id), text: data.nazwa });
+                        else { callback(); alert('Nie udało się dodać ' + labelDop + ': ' + (data.error || '')); }
+                    })
+                    .catch(function () { callback(); });
+            };
+        }
+
+        // Tworzy funkcję create dla Tom Select → AJAX do tabeli zawody
+        function makeTsQuickAddZawody() {
+            return function (input, callback) {
+                var fd = new FormData();
+                fd.append('action',        'add_zawody');
+                fd.append('nazwa_zawodow', input);
+                fd.append('ajax',          '1');
+                fetch('management.php', { method: 'POST', body: fd })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.success) callback({ value: String(data.id), text: data.nazwa });
+                        else { callback(); alert('Nie udało się dodać zawodów: ' + (data.error || '')); }
+                    })
+                    .catch(function () { callback(); });
+            };
+        }
+
+        // Buduje Tom Select z wyszukiwaniem + szybkim dodawaniem
+        function makeTsWithCreate(selector, createFn, createLabel) {
+            return new TomSelect(selector, Object.assign({}, tsPickOptions, {
+                create: createFn,
+                render: {
+                    option_create: function (d, e) {
+                        return '<div class="create">' + createLabel + ': <strong>' + e(d.input) + '</strong></div>';
+                    },
+                    no_results: function (d, e) {
+                        return '<div class="no-results">Brak wyników dla „' + e(d.input) + '”</div>';
+                    }
+                }
+            }));
+        }
+
+        // ── Inicjalizacja wszystkich list rozwijanych ────────────────────────────
+
+        // Formularz Dodaj wyścig
+        var tsSelectIdZawodow    = makeTsWithCreate('#selectIdZawodow',    makeTsQuickAddZawody(),                  'Dodaj zawody');
+        var tsAddWyscigKategoria = makeTsWithCreate('#addWyscigKategoria', makeTsQuickAdd('kategoria','kategorii'), 'Dodaj kategorię');
+        var tsAddWyscigDystans   = makeTsWithCreate('#addWyscigDystans',   makeTsQuickAdd('dystans',  'dystansu'),  'Dodaj dystans');
+        var tsAddWyscigFaza      = makeTsWithCreate('#addWyscigFaza',      makeTsQuickAdd('faza',     'fazy'),      'Dodaj fazę');
+
+        // Modal Edytuj wyścig
+        var tsEditWyscigZawody    = makeTsWithCreate('#editWyscigZawody',    makeTsQuickAddZawody(),                  'Dodaj zawody');
+        var tsEditWyscigKategoria = makeTsWithCreate('#editWyscigKategoria', makeTsQuickAdd('kategoria','kategorii'), 'Dodaj kategorię');
+        var tsEditWyscigDystans   = makeTsWithCreate('#editWyscigDystans',   makeTsQuickAdd('dystans',  'dystansu'),  'Dodaj dystans');
+        var tsEditWyscigFaza      = makeTsWithCreate('#editWyscigFaza',      makeTsQuickAdd('faza',     'fazy'),      'Dodaj fazę');
+
+        // Modały Dodaj/Edytuj drużynę — tor
+        var tsAddDruzynaTor  = makeTsWithCreate('#addDruzynaTor',  makeTsQuickAdd('tor','toru'), 'Dodaj tor');
+        var tsEditDruzynaTor = makeTsWithCreate('#editDruzynaTor', makeTsQuickAdd('tor','toru'), 'Dodaj tor');
+
+        // Modal Klasyfikacja generalna
+        makeTsWithCreate('#klasKategoria', makeTsQuickAdd('kategoria','kategorii'), 'Dodaj kategorię');
+        makeTsWithCreate('#klasDystans',   makeTsQuickAdd('dystans',  'dystansu'),  'Dodaj dystans');
+        makeTsWithCreate('#klasFaza',      makeTsQuickAdd('faza',     'fazy'),      'Dodaj fazę');
+
         // --- Modal: Edytuj zawody ---
         document.querySelectorAll('.edit-zawody-btn').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
@@ -1372,12 +1523,11 @@ if ($res2) {
                 if (!button) return;
                 document.getElementById('editWyscigId').value = button.getAttribute('data-id') || '';
                 document.getElementById('editWyscigNazwa').value = button.getAttribute('data-nazwa') || '';
-                var sel = document.getElementById('editWyscigZawody');
-                if (sel) sel.value = button.getAttribute('data-idz') || '';
+                tsEditWyscigZawody.setValue(button.getAttribute('data-idz') || '', true);
                 document.getElementById('editWyscigNumerGlobalny').value = button.getAttribute('data-numerglobalny') || '';
-                document.getElementById('editWyscigKategoria').value = button.getAttribute('data-idkategorii') || '';
-                document.getElementById('editWyscigDystans').value = button.getAttribute('data-iddystansu') || '';
-                document.getElementById('editWyscigFaza').value = button.getAttribute('data-idfazy') || '';
+                tsEditWyscigKategoria.setValue(button.getAttribute('data-idkategorii') || '', true);
+                tsEditWyscigDystans.setValue(button.getAttribute('data-iddystansu') || '', true);
+                tsEditWyscigFaza.setValue(button.getAttribute('data-idfazy') || '', true);
             });
         }
 
@@ -1389,8 +1539,9 @@ if ($res2) {
                 if (!button) return;
                 document.getElementById('addDruzynaWyscigId').value = button.getAttribute('data-id') || '';
                 document.getElementById('addDruzynaWyscigName').textContent = button.getAttribute('data-wyscignazwa') || '';
-                document.getElementById('addDruzynaNazwa').value = '';
-                document.getElementById('addDruzynaTor').value = '';
+                tomAddDruzyna.clear(true);       // wyczyść wybór (true = cicho, bez triggeru)
+                tomAddDruzyna.setTextboxValue(''); // wyczyść pole wyszukiwania
+                tsAddDruzynaTor.clear(true);
                 document.getElementById('addDruzynaWynik').value = '';
                 document.getElementById('addWynikFeedback').textContent = '';
                 document.getElementById('addWynikFeedback').className = 'form-text';
@@ -1432,9 +1583,16 @@ if ($res2) {
             var row = e.target.closest('.team-editable');
             if (!row) return;
             document.getElementById('editDruzynaId').value = row.getAttribute('data-team-id') || '';
-            document.getElementById('editDruzynaNazwa').value = row.getAttribute('data-team-name') || '';
+
+            // Ustaw drużynę w Tom Select — dodaj opcję jeśli jej jeszcze nie ma
+            var teamName = row.getAttribute('data-team-name') || '';
+            if (teamName && !tomEditDruzyna.options[teamName]) {
+                tomEditDruzyna.addOption({ value: teamName, text: teamName });
+            }
+            tomEditDruzyna.setValue(teamName, true); // true = cicho, bez triggeru
+
             var idToru = row.getAttribute('data-team-idtoru') || '0';
-            document.getElementById('editDruzynaTor').value = (idToru === '0' ? '' : idToru);
+            tsEditDruzynaTor.setValue(idToru === '0' ? '' : idToru, true);
             var wynikVal = row.getAttribute('data-team-wynik') || '';
             document.getElementById('editDruzynaWynik').value = wynikVal;
             document.getElementById('editWynikFeedback').textContent = '';
@@ -1547,7 +1705,7 @@ if ($res2) {
 
         function clearSelection() {
             zawodyItems.forEach(function (it) { it.classList.remove('active'); });
-            if (selectZawody) selectZawody.value = "";
+            if (tsSelectIdZawodow) tsSelectIdZawodow.clear(true); else if (selectZawody) selectZawody.value = "";
         }
 
         function selectById(id, saveCookie) {
@@ -1555,7 +1713,7 @@ if ($res2) {
                 if (it.dataset.id === String(id)) it.classList.add('active');
                 else it.classList.remove('active');
             });
-            if (selectZawody) selectZawody.value = id;
+            if (tsSelectIdZawodow) tsSelectIdZawodow.setValue(String(id), true); else if (selectZawody) selectZawody.value = id;
             if (saveCookie) {
                 setCookie('zawody_formularz', id, 30);
                 location.reload();
