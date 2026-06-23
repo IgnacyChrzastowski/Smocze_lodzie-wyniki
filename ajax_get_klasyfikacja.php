@@ -1,7 +1,7 @@
 <?php
 // Klasyfikacja generalna: zwraca wszystkie drużyny i ich wyniki ze wszystkich wyścigów
-// w danej kategorii, na danym dystansie, w danej fazie — posortowane czasami rosnąco,
-// z przypisanymi miejscami. (Realizacja polecenia z dokumentu specyfikacji.)
+// w danych zawodach, kategorii, dystansie i fazie — posortowane czasami rosnąco,
+// z przypisanymi miejscami.
 
 session_start();
 
@@ -15,29 +15,37 @@ if (!isset($_SESSION['user_id']) || !isset($_SESSION['username'])) {
 
 require_once "config.php";
 
-// Konwertuje wynik MM:SS,mmm na milisekundy (do sortowania) — ta sama logika co w management.php
+// Konwertuje wynik MM:SS,mmm na milisekundy (do sortowania)
 function wynik_na_ms_klasyfikacja(string $wynik): int {
     if (!preg_match('/^(\d{1,2}):(\d{2}),(\d{3})$/', $wynik, $m)) return PHP_INT_MAX;
     return ((int)$m[1] * 60000) + ((int)$m[2] * 1000) + (int)$m[3];
 }
 
+$id_zawodow   = isset($_GET['id_zawodow'])   ? (int)$_GET['id_zawodow']   : 0;
 $id_kategorii = isset($_GET['id_kategorii']) ? (int)$_GET['id_kategorii'] : 0;
 $id_dystansu  = isset($_GET['id_dystansu'])  ? (int)$_GET['id_dystansu']  : 0;
 $id_fazy      = isset($_GET['id_fazy'])      ? (int)$_GET['id_fazy']      : 0;
 
+if ($id_zawodow <= 0) {
+    echo json_encode(['error' => 'Nie wybrano zawodów.']);
+    exit;
+}
 if ($id_kategorii <= 0 || $id_dystansu <= 0 || $id_fazy <= 0) {
     echo json_encode(['error' => 'Wybierz kategorię, dystans i fazę.']);
     exit;
 }
 
 // WYŚWIETLA WSZYSTKIE DRUŻYNY ORAZ ICH WYNIKI ZE WSZYSTKICH WYŚCIGÓW
-// W DANEJ KATEGORII NA DANYM DYSTANSIE W DANEJ FAZIE
+// W DANYCH ZAWODACH, W DANEJ KATEGORII, NA DANYM DYSTANSIE, W DANEJ FAZIE
 $stmt = $conn->prepare("
     SELECT COALESCE(dg.nazwa, wn.nazwa) AS nazwa_druzyny, wn.wynik, r.nazwa AS nazwa_wyscigu
     FROM wyniki wn
     JOIN wyscigi r ON wn.id_wyscigu = r.id
     LEFT JOIN druzyny dg ON wn.id_druzyny = dg.id
-    WHERE r.id_kategorii = ? AND r.id_dystansu = ? AND r.id_fazy = ?
+    WHERE r.id_zawodow   = ?
+      AND r.id_kategorii = ?
+      AND r.id_dystansu  = ?
+      AND r.id_fazy      = ?
       AND wn.wynik IS NOT NULL AND wn.wynik <> ''
 ");
 
@@ -46,7 +54,7 @@ if (!$stmt) {
     exit;
 }
 
-$stmt->bind_param("iii", $id_kategorii, $id_dystansu, $id_fazy);
+$stmt->bind_param("iiii", $id_zawodow, $id_kategorii, $id_dystansu, $id_fazy);
 $stmt->execute();
 $result = $stmt->get_result();
 

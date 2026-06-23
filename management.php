@@ -278,7 +278,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_wyscig') {
     $nazwa_w = trim(isset($_POST['nazwa_wyscigu']) ? $_POST['nazwa_wyscigu'] : '');
     $id_z = (int)(isset($_POST['id_zawodow']) ? $_POST['id_zawodow'] : 0);
-    $numer_globalny = (isset($_POST['numer_globalny']) && $_POST['numer_globalny'] !== '') ? (int)$_POST['numer_globalny'] : null;
     $id_kategorii   = (isset($_POST['id_kategorii'])   && $_POST['id_kategorii']   !== '') ? (int)$_POST['id_kategorii']   : null;
     $id_dystansu    = (isset($_POST['id_dystansu'])    && $_POST['id_dystansu']    !== '') ? (int)$_POST['id_dystansu']    : null;
     $id_fazy        = (isset($_POST['id_fazy'])        && $_POST['id_fazy']        !== '') ? (int)$_POST['id_fazy']        : null;
@@ -288,9 +287,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } elseif ($nazwa_w === '') {
         $alert = "Podaj nazwę wyścigu.";
     } else {
-        $insw = $conn->prepare("INSERT INTO wyscigi (id_zawodow, nazwa, numer_globalny, id_kategorii, id_dystansu, id_fazy) VALUES (?, ?, ?, ?, ?, ?)");
+        $insw = $conn->prepare("INSERT INTO wyscigi (id_zawodow, nazwa, id_kategorii, id_dystansu, id_fazy) VALUES (?, ?, ?, ?, ?)");
         if ($insw) {
-            $insw->bind_param("isiiii", $id_z, $nazwa_w, $numer_globalny, $id_kategorii, $id_dystansu, $id_fazy);
+            $insw->bind_param("isiii", $id_z, $nazwa_w, $id_kategorii, $id_dystansu, $id_fazy);
             if ($insw->execute()) {
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
@@ -309,16 +308,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $id = (int)(isset($_POST['id_wyscigu_edit']) ? $_POST['id_wyscigu_edit'] : 0);
     $nazwa = trim(isset($_POST['nazwa_wyscigu_edit']) ? $_POST['nazwa_wyscigu_edit'] : '');
     $id_z = (int)(isset($_POST['id_zawodow_edit']) ? $_POST['id_zawodow_edit'] : 0);
-    $numer_globalny = (isset($_POST['numer_globalny_edit']) && $_POST['numer_globalny_edit'] !== '') ? (int)$_POST['numer_globalny_edit'] : null;
     $id_kategorii   = (isset($_POST['id_kategorii_edit'])   && $_POST['id_kategorii_edit']   !== '') ? (int)$_POST['id_kategorii_edit']   : null;
     $id_dystansu    = (isset($_POST['id_dystansu_edit'])    && $_POST['id_dystansu_edit']    !== '') ? (int)$_POST['id_dystansu_edit']    : null;
     $id_fazy        = (isset($_POST['id_fazy_edit'])        && $_POST['id_fazy_edit']        !== '') ? (int)$_POST['id_fazy_edit']        : null;
     if ($id <= 0 || $nazwa === '' || $id_z <= 0) {
         $alert = "Niepoprawne dane przy edycji wyścigu.";
     } else {
-        $stmt = $conn->prepare("UPDATE wyscigi SET id_zawodow = ?, nazwa = ?, numer_globalny = ?, id_kategorii = ?, id_dystansu = ?, id_fazy = ? WHERE id = ?");
+        $stmt = $conn->prepare("UPDATE wyscigi SET id_zawodow = ?, nazwa = ?, id_kategorii = ?, id_dystansu = ?, id_fazy = ? WHERE id = ?");
         if ($stmt) {
-            $stmt->bind_param("isiiiii", $id_z, $nazwa, $numer_globalny, $id_kategorii, $id_dystansu, $id_fazy, $id);
+            $stmt->bind_param("isiiii", $id_z, $nazwa, $id_kategorii, $id_dystansu, $id_fazy, $id);
             if ($stmt->execute()) {
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
@@ -569,6 +567,17 @@ if ($res3) {
 // pobierz wartość cookie używaną do filtrowania formularza (management)
 $selected_zawody_formularz = isset($_COOKIE['zawody_formularz']) ? (int)$_COOKIE['zawody_formularz'] : 0;
 
+// Nazwa zaznaczonych zawodów — używana w modalu Klasyfikacja generalna
+$selected_zawody_nazwa = '';
+if ($selected_zawody_formularz > 0) {
+    foreach ($zawody as $z) {
+        if ((int)$z['id'] === $selected_zawody_formularz) {
+            $selected_zawody_nazwa = $z['nazwa'];
+            break;
+        }
+    }
+}
+
 // Pobierz wyścigi — FILTRUJEMY jeśli istnieje cookie $selected_zawody_formularz
 $wyscigi = [];
 $where = '';
@@ -577,7 +586,6 @@ if (!empty($selected_zawody_formularz) && (int)$selected_zawody_formularz > 0) {
 }
 $res2 = $conn->query("
     SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z,
-           w.numer_globalny,
            w.id_kategorii, k.nazwa AS nazwa_kategorii,
            w.id_dystansu, d.nazwa AS nazwa_dystansu,
            w.id_fazy, f.nazwa AS nazwa_fazy
@@ -621,7 +629,6 @@ if ($res2) {
         <a class="navbar-brand" href="#">Panel zarządzania</a>
         <div class="ms-auto">
             <a href="index.php" class="btn btn-outline-light btn-sm me-2" target="_blank">Strona prezentacyjna</a>
-            <button type="button" class="btn btn-outline-light btn-sm me-2" data-bs-toggle="modal" data-bs-target="#klasyfikacjaModal">Klasyfikacja generalna</button>
             <form method="post" action="logout.php" class="d-inline">
                 <button class="btn btn-outline-light btn-sm" type="submit">Wyloguj</button>
             </form>
@@ -711,7 +718,20 @@ if ($res2) {
 
                 <div class="col-md-6">
                     <div class="card shadow-sm">
-                        <div class="card-header"><strong>Dodaj wyścig</strong></div>
+                        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+                            <strong>Dodaj wyścig</strong>
+                            <?php if ($selected_zawody_formularz > 0): ?>
+                                <button type="button" class="btn btn-outline-primary btn-sm"
+                                        data-bs-toggle="modal" data-bs-target="#klasyfikacjaModal">
+                                    📊 Klasyfikacja generalna
+                                </button>
+                            <?php else: ?>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" disabled
+                                        title="Zaznacz zawody z listy po lewej, aby wygenerować klasyfikację">
+                                    📊 Klasyfikacja generalna
+                                </button>
+                            <?php endif; ?>
+                        </div>
                         <div class="card-body">
                             <form method="post">
                                 <input type="hidden" name="action" value="add_wyscig">
@@ -732,10 +752,6 @@ if ($res2) {
                                 <div class="mb-3">
                                     <label class="form-label">Nazwa wyścigu</label>
                                     <input type="text" name="nazwa_wyscigu" class="form-control" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Numer globalny <span class="text-muted">(opcjonalnie)</span></label>
-                                    <input type="number" name="numer_globalny" class="form-control" min="1">
                                 </div>
                                 <div class="row g-2 mb-3">
                                     <div class="col-md-4">
@@ -785,7 +801,7 @@ if ($res2) {
                                     <tbody>
                                     <?php foreach ($wyscigi as $w): ?>
                                         <tr class="wyscig-row" data-id="<?php echo (int)$w['id']; ?>" data-zawody="<?php echo (int)$w['id_zawodow']; ?>">
-                                            <td class="text-muted small"><?php echo $w['numer_globalny'] !== null ? '#' . (int)$w['numer_globalny'] : (int)$w['id']; ?></td>
+                                            <td class="text-muted small"><?php echo (int)$w['id']; ?></td>
                                             <td><?php echo htmlspecialchars($w['nazwa_w']); ?></td>
                                             <td><?php echo htmlspecialchars(isset($w['nazwa_z']) ? $w['nazwa_z'] : '—'); ?></td>
                                             <td>
@@ -800,7 +816,6 @@ if ($res2) {
                                                             data-id="<?php echo (int)$w['id']; ?>" data-wyscignazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>">Dodaj drużynę</button>
                                                     <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editWyscigModal"
                                                             data-id="<?php echo (int)$w['id']; ?>" data-nazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>" data-idz="<?php echo (int)$w['id_zawodow']; ?>"
-                                                            data-numerglobalny="<?php echo $w['numer_globalny'] !== null ? (int)$w['numer_globalny'] : ''; ?>"
                                                             data-idkategorii="<?php echo $w['id_kategorii'] !== null ? (int)$w['id_kategorii'] : ''; ?>"
                                                             data-iddystansu="<?php echo $w['id_dystansu'] !== null ? (int)$w['id_dystansu'] : ''; ?>"
                                                             data-idfazy="<?php echo $w['id_fazy'] !== null ? (int)$w['id_fazy'] : ''; ?>">Edytuj</button>
@@ -1115,10 +1130,6 @@ if ($res2) {
                         <label class="form-label">Nazwa wyścigu</label>
                         <input type="text" name="nazwa_wyscigu_edit" id="editWyscigNazwa" class="form-control" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Numer globalny <span class="text-muted">(opcjonalnie)</span></label>
-                        <input type="number" name="numer_globalny_edit" id="editWyscigNumerGlobalny" class="form-control" min="1">
-                    </div>
                     <div class="row g-2">
                         <div class="col-md-4">
                             <label class="form-label">Kategoria</label>
@@ -1308,6 +1319,16 @@ if ($res2) {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
             </div>
             <div class="modal-body">
+                <!-- Zawody, których dotyczy klasyfikacja -->
+                <?php if ($selected_zawody_formularz > 0): ?>
+                    <div class="alert alert-primary py-2 px-3 mb-3 d-flex align-items-center gap-2" style="font-size:0.9rem;">
+                        🏆 <span>Zawody: <strong><?php echo htmlspecialchars($selected_zawody_nazwa); ?></strong></span>
+                    </div>
+                <?php else: ?>
+                    <div class="alert alert-warning py-2 px-3 mb-3" style="font-size:0.9rem;">
+                        Zaznacz zawody w sekcji „Lista zawodów” (po lewej stronie), aby wygenerować klasyfikację.
+                    </div>
+                <?php endif; ?>
                 <div class="row g-2 mb-3">
                     <div class="col-md-4">
                         <label class="form-label">Kategoria</label>
@@ -1343,7 +1364,10 @@ if ($res2) {
                     </div>
                 <?php endif; ?>
                 <div class="text-center mb-3">
-                    <button type="button" class="btn btn-primary" id="btnGenerujRanking">Generuj ranking</button>
+                    <button type="button" class="btn btn-primary" id="btnGenerujRanking"
+                            <?php if ($selected_zawody_formularz <= 0): ?>disabled<?php endif; ?>>
+                        Generuj ranking
+                    </button>
                 </div>
                 <div id="klasyfikacjaWynik"></div>
             </div>
@@ -1391,6 +1415,18 @@ if ($res2) {
         if (savedTab) {
             var savedBtn = document.querySelector('#mainTabs button[data-bs-target="' + savedTab + '"]');
             if (savedBtn) bootstrap.Tab.getOrCreateInstance(savedBtn).show();
+        }
+
+        // --- Pamiętaj i przywracaj pozycję scrolla po każdym przeładowaniu przez POST ---
+        document.querySelectorAll('form[method="post"]').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                sessionStorage.setItem('scrollY', String(window.scrollY));
+            });
+        });
+        var savedScrollY = sessionStorage.getItem('scrollY');
+        if (savedScrollY !== null) {
+            window.scrollTo(0, parseInt(savedScrollY, 10));
+            sessionStorage.removeItem('scrollY');
         }
 
         // --- Tom Select: lista rozwijana z wyszukiwaniem dla pola Drużyna ---
@@ -1524,7 +1560,6 @@ if ($res2) {
                 document.getElementById('editWyscigId').value = button.getAttribute('data-id') || '';
                 document.getElementById('editWyscigNazwa').value = button.getAttribute('data-nazwa') || '';
                 tsEditWyscigZawody.setValue(button.getAttribute('data-idz') || '', true);
-                document.getElementById('editWyscigNumerGlobalny').value = button.getAttribute('data-numerglobalny') || '';
                 tsEditWyscigKategoria.setValue(button.getAttribute('data-idkategorii') || '', true);
                 tsEditWyscigDystans.setValue(button.getAttribute('data-iddystansu') || '', true);
                 tsEditWyscigFaza.setValue(button.getAttribute('data-idfazy') || '', true);
@@ -1647,6 +1682,10 @@ if ($res2) {
             return div.innerHTML;
         }
 
+        // ID i nazwa aktualnie zaznaczonych zawodów (z sekcji Lista zawodów)
+        var selectedZawodyId    = <?php echo (int)$selected_zawody_formularz; ?>;
+        var selectedZawodyNazwa = '<?php echo addslashes(htmlspecialchars($selected_zawody_nazwa)); ?>';
+
         var btnGenerujRanking = document.getElementById('btnGenerujRanking');
         if (btnGenerujRanking) {
             btnGenerujRanking.addEventListener('click', function () {
@@ -1655,6 +1694,10 @@ if ($res2) {
                 var idf = document.getElementById('klasFaza').value;
                 var wynikEl = document.getElementById('klasyfikacjaWynik');
 
+                if (!selectedZawodyId) {
+                    wynikEl.innerHTML = '<div class="alert alert-warning py-2 mb-0">Zaznacz zawody w sekcji „Lista zawodów” po lewej stronie.</div>';
+                    return;
+                }
                 if (!idk || !idd || !idf) {
                     wynikEl.innerHTML = '<div class="alert alert-warning py-2 mb-0">Wybierz kategorię, dystans i fazę.</div>';
                     return;
@@ -1663,8 +1706,9 @@ if ($res2) {
                 wynikEl.innerHTML = '<div class="text-center text-muted py-3">Generowanie rankingu…</div>';
 
                 fetch('ajax_get_klasyfikacja.php?id_kategorii=' + encodeURIComponent(idk) +
-                    '&id_dystansu=' + encodeURIComponent(idd) +
-                    '&id_fazy=' + encodeURIComponent(idf))
+                    '&id_dystansu='  + encodeURIComponent(idd) +
+                    '&id_fazy='      + encodeURIComponent(idf) +
+                    '&id_zawodow='   + encodeURIComponent(selectedZawodyId))
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         if (data.error) {
