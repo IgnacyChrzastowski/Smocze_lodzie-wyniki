@@ -588,7 +588,8 @@ $res2 = $conn->query("
     SELECT w.id AS id, w.nazwa AS nazwa_w, w.id_zawodow, z.nazwa AS nazwa_z,
            w.id_kategorii, k.nazwa AS nazwa_kategorii,
            w.id_dystansu, d.nazwa AS nazwa_dystansu,
-           w.id_fazy, f.nazwa AS nazwa_fazy
+           w.id_fazy, f.nazwa AS nazwa_fazy,
+           f.kolejnosc AS faza_kolejnosc
     FROM wyscigi w
     LEFT JOIN zawody z ON w.id_zawodow = z.id
     LEFT JOIN kategorie k ON w.id_kategorii = k.id
@@ -813,7 +814,22 @@ if ($res2) {
                                             <td>
                                                 <div class="btn-group btn-group-sm">
                                                     <button type="button" class="btn btn-outline-success" data-bs-toggle="modal" data-bs-target="#addDruzynaModal"
-                                                            data-id="<?php echo (int)$w['id']; ?>" data-wyscignazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>">Dodaj drużynę</button>
+                                                            data-id="<?php echo (int)$w['id']; ?>"
+                                                            data-wyscignazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>"
+                                                            data-id-zawodow="<?php echo (int)$w['id_zawodow']; ?>"
+                                                            data-id-kategorii="<?php echo $w['id_kategorii'] !== null ? (int)$w['id_kategorii'] : ''; ?>"
+                                                            data-id-dystansu="<?php echo $w['id_dystansu']  !== null ? (int)$w['id_dystansu']  : ''; ?>"
+                                                            data-faza-kolejnosc="<?php echo $w['faza_kolejnosc'] !== null ? (int)$w['faza_kolejnosc'] : 0; ?>"
+                                                            data-poprzednie-fazy="<?php
+                                                            $prev = array_values(array_filter($fazy, function($f) use ($w) {
+                                                                return $f['kolejnosc'] !== null
+                                                                        && $w['faza_kolejnosc'] !== null
+                                                                        && (int)$f['kolejnosc'] < (int)$w['faza_kolejnosc'];
+                                                            }));
+                                                            echo htmlspecialchars(json_encode(array_map(function($f){
+                                                                return ['id' => (int)$f['id'], 'nazwa' => $f['nazwa']];
+                                                            }, $prev), JSON_UNESCAPED_UNICODE), ENT_QUOTES);
+                                                            ?>">Dodaj drużynę</button>
                                                     <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editWyscigModal"
                                                             data-id="<?php echo (int)$w['id']; ?>" data-nazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>" data-idz="<?php echo (int)$w['id_zawodow']; ?>"
                                                             data-idkategorii="<?php echo $w['id_kategorii'] !== null ? (int)$w['id_kategorii'] : ''; ?>"
@@ -1181,6 +1197,22 @@ if ($res2) {
                 <input type="hidden" name="action" value="add_druzyna">
                 <input type="hidden" name="id_wyscigu" id="addDruzynaWyscigId">
                 <div class="modal-body">
+
+                    <!-- Panel wyników poprzednich faz (pokazuje się gdy faza.kolejnosc > 1) -->
+                    <div id="prevFazyPanel" class="mb-3 d-none">
+                        <div class="border border-info-subtle rounded overflow-hidden">
+                            <div class="bg-info-subtle px-3 pt-2 pb-2">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="fw-semibold text-info-emphasis" style="font-size:.875rem;">📊 Wyniki z poprzednich faz</span>
+                                    <span class="text-muted" style="font-size:.78rem;">kliknij wiersz, aby wybrać drużynę</span>
+                                </div>
+                                <!-- Checkboxy faz renderowane przez JS -->
+                                <div id="prevFazyFilter" class="d-flex flex-wrap gap-2"></div>
+                            </div>
+                            <div id="prevFazyContent" style="max-height:240px; overflow-y:auto;"></div>
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label">Nazwa drużyny</label>
                         <select name="nazwa_druzyny" id="addDruzynaNazwa">
@@ -1566,6 +1598,66 @@ if ($res2) {
             });
         }
 
+        // --- Ładowanie rankingu poprzednich faz (wywoływane po zmianie checkboxa lub otwarciu modalu) ---
+        function loadPrevFazyRanking(idZawodow, idKategorii, idDystansu, allFazyIds) {
+            var content = document.getElementById('prevFazyContent');
+            var sel = document.getElementById('prevFazySelect');
+            var selectedIds = (sel && sel.value !== 'all') ? [sel.value] : (allFazyIds || []);
+
+            if (selectedIds.length === 0) {
+                content.innerHTML = '<div class="text-center text-muted py-2" style="font-size:.85rem;">Brak faz do wyświetlenia.</div>';
+                return;
+            }
+
+            content.innerHTML = '<div class="text-center text-muted py-2" style="font-size:.85rem;">Wczytywanie…</div>';
+
+            fetch('ajax_get_ranking_faz.php'
+                + '?id_zawodow='   + encodeURIComponent(idZawodow)
+                + '&id_kategorii=' + encodeURIComponent(idKategorii)
+                + '&id_dystansu='  + encodeURIComponent(idDystansu)
+                + '&fazy_ids='     + encodeURIComponent(selectedIds.join(',')))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.error) {
+                        content.innerHTML = '<div class="text-center text-danger py-2" style="font-size:.85rem;">B\u0142\u0105d: ' + escapeHtml(data.error) + '</div>';
+                        return;
+                    }
+                    if (!data.ranking || data.ranking.length === 0) {
+                        content.innerHTML = '<div class="text-center text-muted py-2" style="font-size:.85rem;">Brak wyników dla wybranych faz.</div>';
+                        return;
+                    }
+                    var rankingData = data.ranking;
+                    var html = '<table class="table table-sm table-hover mb-0" style="font-size:.82rem;">'
+                        + '<thead class="table-light"><tr><th style="width:34px">#</th><th>Drużyna</th><th>Czas</th><th class="text-muted">Wyścig</th></tr></thead><tbody>';
+                    rankingData.forEach(function (row, idx) {
+                        html += '<tr class="prev-rank-row" style="cursor:pointer;" data-idx="' + idx + '">'
+                            + '<td>' + row.miejsce + '</td>'
+                            + '<td><strong>' + escapeHtml(row.nazwa_druzyny) + '</strong></td>'
+                            + '<td>' + escapeHtml(row.wynik) + '</td>'
+                            + '<td class="text-muted">' + escapeHtml(row.nazwa_wyscigu) + '</td>'
+                            + '</tr>';
+                    });
+                    html += '</tbody></table>';
+                    content.innerHTML = html;
+
+                    content.querySelectorAll('.prev-rank-row').forEach(function (row) {
+                        row.addEventListener('click', function () {
+                            var idx = parseInt(this.getAttribute('data-idx'), 10);
+                            var nazwaTeam = rankingData[idx].nazwa_druzyny;
+                            content.querySelectorAll('.prev-rank-row').forEach(function (r) { r.classList.remove('table-primary'); });
+                            this.classList.add('table-primary');
+                            if (!tomAddDruzyna.options[nazwaTeam]) {
+                                tomAddDruzyna.addOption({ value: nazwaTeam, text: nazwaTeam });
+                            }
+                            tomAddDruzyna.setValue(nazwaTeam, true);
+                        });
+                    });
+                })
+                .catch(function () {
+                    content.innerHTML = '<div class="text-center text-muted py-2 text-danger" style="font-size:.85rem;">Błąd ładowania wyników.</div>';
+                });
+        }
+
         // --- Modal: Dodaj drużynę ---
         var addDruzynaModal = document.getElementById('addDruzynaModal');
         if (addDruzynaModal) {
@@ -1574,12 +1666,55 @@ if ($res2) {
                 if (!button) return;
                 document.getElementById('addDruzynaWyscigId').value = button.getAttribute('data-id') || '';
                 document.getElementById('addDruzynaWyscigName').textContent = button.getAttribute('data-wyscignazwa') || '';
-                tomAddDruzyna.clear(true);       // wyczyść wybór (true = cicho, bez triggeru)
-                tomAddDruzyna.setTextboxValue(''); // wyczyść pole wyszukiwania
+                tomAddDruzyna.clear(true);
+                tomAddDruzyna.setTextboxValue('');
                 tsAddDruzynaTor.clear(true);
                 document.getElementById('addDruzynaWynik').value = '';
                 document.getElementById('addWynikFeedback').textContent = '';
                 document.getElementById('addWynikFeedback').className = 'form-text';
+
+                // ── Panel wyników poprzednich faz ──────────────────────────
+                var fazaKolejnosc = parseInt(button.getAttribute('data-faza-kolejnosc') || '0', 10);
+                var idKategorii   = button.getAttribute('data-id-kategorii') || '';
+                var idDystansu    = button.getAttribute('data-id-dystansu')  || '';
+                var idZawodow     = button.getAttribute('data-id-zawodow')   || '';
+                var panel         = document.getElementById('prevFazyPanel');
+                var filterEl      = document.getElementById('prevFazyFilter');
+                var content       = document.getElementById('prevFazyContent');
+
+                if (fazaKolejnosc > 1 && idKategorii && idDystansu && idZawodow) {
+                    panel.classList.remove('d-none');
+
+                    // Renderuj checkboxy dla dostępnych poprzednich faz
+                    var poprzednieFazy = [];
+                    try { poprzednieFazy = JSON.parse(button.getAttribute('data-poprzednie-fazy') || '[]'); } catch (e) {}
+
+                    var allFazyIds = poprzednieFazy.map(function (f) { return String(f.id); });
+
+                    if (poprzednieFazy.length === 0) {
+                        filterEl.innerHTML = '<span class="text-muted" style="font-size:.8rem;">Brak zdefiniowanych poprzednich faz.</span>';
+                    } else {
+                        var fHtml = '<select id="prevFazySelect" class="form-select form-select-sm" style="width:auto; min-width:170px;">'
+                            + '<option value="all">Wszystkie poprzednie</option>';
+                        poprzednieFazy.forEach(function (f) {
+                            fHtml += '<option value="' + f.id + '">' + escapeHtml(f.nazwa) + '</option>';
+                        });
+                        fHtml += '</select>';
+                        filterEl.innerHTML = fHtml;
+
+                        document.getElementById('prevFazySelect').addEventListener('change', function () {
+                            loadPrevFazyRanking(idZawodow, idKategorii, idDystansu, allFazyIds);
+                        });
+                    }
+
+                    content.innerHTML = '';
+                    loadPrevFazyRanking(idZawodow, idKategorii, idDystansu, allFazyIds);
+
+                } else {
+                    panel.classList.add('d-none');
+                    filterEl.innerHTML = '';
+                    content.innerHTML = '';
+                }
             });
         }
 
