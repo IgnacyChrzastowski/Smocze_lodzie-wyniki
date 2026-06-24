@@ -630,6 +630,8 @@ if ($res2) {
         <a class="navbar-brand" href="#">Panel zarządzania</a>
         <div class="ms-auto">
             <a href="index.php" class="btn btn-outline-light btn-sm me-2" target="_blank">Strona prezentacyjna</a>
+            <a href="operator-page.php" class="btn btn-outline-light btn-sm me-2" target="_blank">Operator</a>
+            <a href="stream-page.php" class="btn btn-danger btn-sm me-2" target="_blank">Stream</a>
             <form method="post" action="logout.php" class="d-inline">
                 <button class="btn btn-outline-light btn-sm" type="submit">Wyloguj</button>
             </form>
