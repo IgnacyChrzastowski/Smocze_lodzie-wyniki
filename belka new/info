@@ -1,0 +1,14 @@
+To są poprawione pliki, które trzeba wgrać i sprawdzić czy działają, zadania do wykonania:
+
+Update 26.06.2026 
+Belki półprzezroczyste 
+Dodać opis wyścigu (krótka notatka) 
+Nazwa – numer wyścigu z podpowiedzią auto inkrementowaną (<input value={AutoIncrement}/>) 
+Strona prezentacyjna: 
+Nie mają pokazywać się miejsca jak nie ma wyniku 
+Management: 
+Scrolowanie Listy wyścigów (wielkość 2 wyścigi po 6 torów) 
+
+TRZEBA DOPISAĆ JEDNA LINIE W SQL:
+ALTER TABLE wyscigi ADD COLUMN opis TEXT DEFAULT NULL;
+
