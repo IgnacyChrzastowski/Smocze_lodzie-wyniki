@@ -39,25 +39,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Wczytaj ustawienia streamu
 $s = [];
-$res = $conn->query("SELECT klucz, wartosc FROM ustawienia WHERE klucz IN ('stream_zawody_id','stream_wyscig_id','stream_tryb_tabelki','stream_tryb_belki')");
+$res = $conn->query("SELECT klucz, wartosc FROM ustawienia WHERE klucz IN ('stream_wyscig_id','stream_tryb_tabelki')");
 if ($res) { while ($r = $res->fetch_assoc()) $s[$r['klucz']] = $r['wartosc']; $res->free(); }
 
-$zawody_id    = (int)($s['stream_zawody_id'] ?? 0);
-$base_id      = (int)($s['stream_wyscig_id'] ?? 0);
+$wyscig_id    = (int)($s['stream_wyscig_id'] ?? 0);
 $tryb_tabelki = $s['stream_tryb_tabelki'] ?? 'tory';
-$tryb_belki   = $s['stream_tryb_belki'] ?? 'aktualny';
 
-// Wyznacz faktyczny wyścig na podstawie trybu belki
-$wyscig_id = $base_id;
-if ($base_id > 0 && $zawody_id > 0) {
-    if ($tryb_belki === 'poprzedni') {
-        $r = $conn->query("SELECT id FROM wyscigi WHERE id_zawodow=$zawody_id AND id<$base_id ORDER BY id DESC LIMIT 1");
-        if ($r && $r->num_rows > 0) { $wyscig_id = (int)$r->fetch_assoc()['id']; $r->free(); }
-    } elseif ($tryb_belki === 'nastepny') {
-        $r = $conn->query("SELECT id FROM wyscigi WHERE id_zawodow=$zawody_id AND id>$base_id ORDER BY id ASC LIMIT 1");
-        if ($r && $r->num_rows > 0) { $wyscig_id = (int)$r->fetch_assoc()['id']; $r->free(); }
-    }
-}
+// stream-page zawsze pokazuje dokładnie wybrany wyścig (tryb belki nie ma tu zastosowania)
 
 if ($wyscig_id <= 0) {
     echo json_encode(['html' => '', 'empty' => true, 'type' => $tryb_tabelki]);
@@ -83,7 +71,7 @@ if (!$race) {
 }
 
 // Buduj nagłówek: WYŚCIG ... KAT. ... DYSTANS FAZA
-$header_parts = [mb_strtoupper($race['nazwa'])];
+$header_parts = ['WYŚCIG ' . mb_strtoupper($race['nazwa'])];
 if ($race['kat'])  $header_parts[] = 'KAT. ' . mb_strtoupper($race['kat']);
 if ($race['dyst']) $header_parts[] = mb_strtoupper($race['dyst']);
 if ($race['faza']) $header_parts[] = mb_strtoupper($race['faza']);
@@ -106,7 +94,10 @@ $res = $conn->query("
 if ($res) { while ($r = $res->fetch_assoc()) $teams[] = $r; $res->free(); }
 
 // Buduj HTML
-$hdr = '<div class="race-header">' . htmlspecialchars($header) . '</div>';
+$hdr = '<div class="race-header">'
+    . '<div class="race-header-text">' . htmlspecialchars($header) . '</div>'
+    . '<span class="race-header-brand">fromair.pl</span>'
+    . '</div>';
 
 if ($tryb_tabelki === 'tory') {
     // Sortuj po numerze toru
@@ -120,7 +111,8 @@ if ($tryb_tabelki === 'tory') {
             . '<div class="col-team">'  . $druzyna   . '</div>'
             . '</div>';
     }
-    $html = '<div class="tbl-tory">' . $hdr . $rows . '</div>';
+    $logo_html = '<div class="tbl-brand"><img src="https://fromair.pl/wp-content/uploads/2025/02/Logo_bez_ta_Obszar_roboczy_1-120x120.png" alt="fromair.pl" class="tbl-logo"><span class="tbl-brand-name">fromair.pl</span></div>';
+    $html = '<div class="tbl-tory">' . $logo_html . $hdr . $rows . '</div>';
 } else {
     // Sortuj po miejscu
     usort($teams, fn($a, $b) => (int)$a['miejsce'] <=> (int)$b['miejsce']);
@@ -135,7 +127,8 @@ if ($tryb_tabelki === 'tory') {
             . '<div class="col-result">' . $wynik     . '</div>'
             . '</div>';
     }
-    $html = '<div class="tbl-miejsca">' . $hdr . $rows . '</div>';
+    $logo_html2 = '<div class="tbl-brand"><img src="https://fromair.pl/wp-content/uploads/2025/02/Logo_bez_ta_Obszar_roboczy_1-120x120.png" alt="fromair.pl" class="tbl-logo"><span class="tbl-brand-name">fromair.pl</span></div>';
+    $html = '<div class="tbl-miejsca">' . $logo_html2 . $hdr . $rows . '</div>';
 }
 
 echo json_encode(['html' => $html, 'empty' => false, 'type' => $tryb_tabelki], JSON_UNESCAPED_UNICODE);

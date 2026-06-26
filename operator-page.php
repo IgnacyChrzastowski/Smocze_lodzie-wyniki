@@ -175,7 +175,8 @@ if ($stream_zawody_id > 0) {
     <div class="d-flex gap-2">
         <a href="index.php" class="btn btn-outline-light btn-sm" target="_blank">Wyniki</a>
         <a href="management.php" class="btn btn-outline-light btn-sm">Zarządzanie</a>
-        <a href="stream-page.php" class="btn btn-danger btn-sm" target="_blank">Stream</a>
+        <a href="stream-page.php" class="btn btn-danger btn-sm" target="_blank">▶ Stream</a>
+        <a href="info-belt.php" class="btn btn-warning btn-sm" target="_blank" style="color:#111">ℹ Belka</a>
         <form method="post" action="logout.php" class="d-inline">
             <button class="btn btn-outline-secondary btn-sm" type="submit">Wyloguj</button>
         </form>
@@ -247,7 +248,7 @@ if ($stream_zawody_id > 0) {
 
         <!-- Tryb belki -->
         <div class="op-row">
-            <div class="op-label">Tryb belki</div>
+            <div class="op-label">Tryb belki<br><small style="font-weight:400;text-transform:none;letter-spacing:0;color:#aaa">dotyczy strony Belka</small></div>
             <div class="op-control">
                 <div class="belki-group" id="belkiGroup">
                     <div class="belki-btn <?php echo $stream_tryb_belki === 'poprzedni' ? 'active' : ''; ?>" data-val="poprzedni">Poprzedni</div>
