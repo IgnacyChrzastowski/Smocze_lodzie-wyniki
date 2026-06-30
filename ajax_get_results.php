@@ -99,14 +99,23 @@ if (count($wyscigi) === 0) {
                     $tor_label = (string)(int)$t['tor_legacy'];
                 }
 
-                // klasa medalu
+                // Miejsce i medal — TYLKO gdy drużyna ma wpisany wynik
+                $has_wynik = ($wynik !== null && $wynik !== '');
                 $medal = '';
-                if ($miejsce === 1) $medal = 'gold';
-                elseif ($miejsce === 2) $medal = 'silver';
-                elseif ($miejsce === 3) $medal = 'bronze';
+                if ($has_wynik) {
+                    if ($miejsce === 1) $medal = 'gold';
+                    elseif ($miejsce === 2) $medal = 'silver';
+                    elseif ($miejsce === 3) $medal = 'bronze';
+                }
 
                 echo '<tr>';
-                echo '<td style="text-align:center"><span class="place-badge ' . $medal . '">' . $miejsce . '</span></td>';
+                echo '<td style="text-align:center">';
+                if ($has_wynik) {
+                    echo '<span class="place-badge ' . $medal . '">' . $miejsce . '</span>';
+                } else {
+                    echo '<span style="color:#ccc">—</span>';
+                }
+                echo '</td>';
                 echo '<td><span class="team-name">' . $nazwa_t . '</span></td>';
                 echo '<td style="text-align:center">';
                 echo ($tor_label !== '')

@@ -33,17 +33,19 @@
         .tbl-tory, .tbl-miejsca {
             border-left: 5px solid #0d6efd;
             overflow: hidden;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
 
         /* ── Pasek brandu fromair.pl ───────────────────────── */
         .tbl-brand {
-            background: #060b1c;
+            background: rgba(6, 11, 28, 0.62);
             display: flex;
             align-items: center;
             justify-content: flex-end;
             gap: 8px;
             padding: 6px 16px;
-            border-bottom: 1px solid #0d3070;
+            border-bottom: 1px solid rgba(13, 48, 112, 0.55);
         }
         .tbl-logo {
             height: 20px;
@@ -60,32 +62,42 @@
 
         /* ── Nagłówek wyścigu ──────────────────────────────── */
         .race-header {
-            background: linear-gradient(135deg, #060d20 0%, #0a1432 100%);
+            background: linear-gradient(135deg, rgba(6,13,32,0.88) 0%, rgba(10,20,50,0.88) 100%);
             color: #e2ecff;
-            padding: 16px 24px;
+            padding: 12px 24px;
             font-size: clamp(.9rem, 1.8vw, 1.15rem);
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: .1em;
             text-align: center;
-            border-bottom: 2px solid #0d3070;
+            border-bottom: 2px solid rgba(13, 48, 112, 0.55);
             line-height: 1.3;
+        }
+        .race-header-text { }
+        .race-header-opis {
+            font-size: clamp(.68rem, 1.2vw, .8rem);
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: .04em;
+            color: #8ab4e8;
+            margin-top: 4px;
+            opacity: .9;
         }
 
         /* ── Wiersz ────────────────────────────────────────── */
         .race-row {
             display: flex;
             align-items: stretch;
-            border-bottom: 1px solid #0d1e42;
-            background: #080f22;
+            border-bottom: 1px solid rgba(13, 30, 66, 0.55);
+            background: rgba(8, 15, 34, 0.55);
             min-height: 54px;
         }
-        .race-row:nth-child(even) { background: #0a1328; }
+        .race-row:nth-child(even) { background: rgba(10, 19, 40, 0.55); }
         .race-row:last-child { border-bottom: none; }
 
         /* ── Tabelka z torami ──────────────────────────────── */
         .tbl-tory .col-label {
-            background: #060b1c;
+            background: rgba(6, 11, 28, 0.62);
             color: #4d9fff;
             padding: 14px 16px;
             width: 110px;
@@ -95,7 +107,7 @@
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: .1em;
-            border-right: 1px solid #0d2650;
+            border-right: 1px solid rgba(13, 38, 80, 0.55);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -114,7 +126,7 @@
 
         /* ── Tabelka z miejscami ───────────────────────────── */
         .tbl-miejsca .col-place {
-            background: #060b1c;
+            background: rgba(6, 11, 28, 0.62);
             color: #4d9fff;
             padding: 14px 16px;
             width: 150px;
@@ -124,7 +136,7 @@
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: .08em;
-            border-right: 1px solid #0d2650;
+            border-right: 1px solid rgba(13, 38, 80, 0.55);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -149,7 +161,7 @@
             font-size: clamp(.82rem, 1.5vw, .98rem);
             font-weight: 700;
             color: #4d9fff;
-            border-left: 1px solid #0d2650;
+            border-left: 1px solid rgba(13, 38, 80, 0.55);
             display: flex;
             align-items: center;
             justify-content: flex-end;

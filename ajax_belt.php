@@ -33,7 +33,7 @@ if ($wyscig_id <= 0) {
 // Szczegóły wyścigu
 $race = null;
 $res = $conn->query("
-    SELECT w.nazwa,
+    SELECT w.nazwa, w.opis,
            k.nazwa AS kat, d.nazwa AS dyst, f.nazwa AS faza
     FROM wyscigi w
     LEFT JOIN kategorie k ON w.id_kategorii = k.id
@@ -62,6 +62,7 @@ $html = '<div class="belt belt--' . htmlspecialchars($tryb_belki) . '">'
     . '<div class="belt-label">' . htmlspecialchars($label) . '</div>'
     . '<div class="belt-body">'
     .   '<span class="belt-name">' . $race_name . '</span>'
+    .   ($race['opis'] ? '<span class="belt-opis">' . htmlspecialchars($race['opis']) . '</span>' : '')
     .   '<span class="belt-sep"></span>'
     .   '<span class="belt-tags">' . $kat . $dyst . $faza . '</span>'
     . '</div>'

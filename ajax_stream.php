@@ -55,7 +55,7 @@ if ($wyscig_id <= 0) {
 // Szczegóły wyścigu
 $race = null;
 $res = $conn->query("
-    SELECT w.id, w.nazwa,
+    SELECT w.id, w.nazwa, w.opis,
            k.nazwa AS kat, d.nazwa AS dyst, f.nazwa AS faza
     FROM wyscigi w
     LEFT JOIN kategorie k ON w.id_kategorii = k.id
@@ -71,7 +71,7 @@ if (!$race) {
 }
 
 // Buduj nagłówek: WYŚCIG ... KAT. ... DYSTANS FAZA
-$header_parts = ['WYŚCIG ' . mb_strtoupper($race['nazwa'])];
+$header_parts = [mb_strtoupper($race['nazwa'])];
 if ($race['kat'])  $header_parts[] = 'KAT. ' . mb_strtoupper($race['kat']);
 if ($race['dyst']) $header_parts[] = mb_strtoupper($race['dyst']);
 if ($race['faza']) $header_parts[] = mb_strtoupper($race['faza']);
@@ -96,7 +96,7 @@ if ($res) { while ($r = $res->fetch_assoc()) $teams[] = $r; $res->free(); }
 // Buduj HTML
 $hdr = '<div class="race-header">'
     . '<div class="race-header-text">' . htmlspecialchars($header) . '</div>'
-    . '<span class="race-header-brand">fromair.pl</span>'
+    . ($race['opis'] ? '<div class="race-header-opis">' . htmlspecialchars($race['opis']) . '</div>' : '')
     . '</div>';
 
 if ($tryb_tabelki === 'tory') {
@@ -118,6 +118,8 @@ if ($tryb_tabelki === 'tory') {
     usort($teams, fn($a, $b) => (int)$a['miejsce'] <=> (int)$b['miejsce']);
     $rows = '';
     foreach ($teams as $t) {
+        // Pomijaj wiersze bez wyniku w trybie miejsc
+        if ($t['wynik'] === null || $t['wynik'] === '') continue;
         $msc_label = (int)$t['miejsce'] . ' MIEJSCE';
         $druzyna   = htmlspecialchars(mb_strtoupper($t['druzyna'] ?? ''));
         $wynik     = htmlspecialchars($t['wynik'] ?? '');

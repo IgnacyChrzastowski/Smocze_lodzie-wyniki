@@ -276,20 +276,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Dodaj wyścig
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_wyscig') {
-    $nazwa_w = trim(isset($_POST['nazwa_wyscigu']) ? $_POST['nazwa_wyscigu'] : '');
+    $nazwa_w = 'Wyścig ' . trim(isset($_POST['nazwa_wyscigu']) ? $_POST['nazwa_wyscigu'] : '');
     $id_z = (int)(isset($_POST['id_zawodow']) ? $_POST['id_zawodow'] : 0);
     $id_kategorii   = (isset($_POST['id_kategorii'])   && $_POST['id_kategorii']   !== '') ? (int)$_POST['id_kategorii']   : null;
     $id_dystansu    = (isset($_POST['id_dystansu'])    && $_POST['id_dystansu']    !== '') ? (int)$_POST['id_dystansu']    : null;
     $id_fazy        = (isset($_POST['id_fazy'])        && $_POST['id_fazy']        !== '') ? (int)$_POST['id_fazy']        : null;
+    $opis_w  = trim(isset($_POST['opis_wyscigu']) ? $_POST['opis_wyscigu'] : '');
 
     if ($id_z <= 0) {
         $alert = "Musisz wybrać zawody przed dodaniem wyścigu.";
     } elseif ($nazwa_w === '') {
         $alert = "Podaj nazwę wyścigu.";
     } else {
-        $insw = $conn->prepare("INSERT INTO wyscigi (id_zawodow, nazwa, id_kategorii, id_dystansu, id_fazy) VALUES (?, ?, ?, ?, ?)");
+        $insw = $conn->prepare("INSERT INTO wyscigi (id_zawodow, nazwa, id_kategorii, id_dystansu, id_fazy, opis) VALUES (?, ?, ?, ?, ?, ?)");
         if ($insw) {
-            $insw->bind_param("isiii", $id_z, $nazwa_w, $id_kategorii, $id_dystansu, $id_fazy);
+            $insw->bind_param("isiiis", $id_z, $nazwa_w, $id_kategorii, $id_dystansu, $id_fazy, $opis_w);
             if ($insw->execute()) {
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
@@ -311,12 +312,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $id_kategorii   = (isset($_POST['id_kategorii_edit'])   && $_POST['id_kategorii_edit']   !== '') ? (int)$_POST['id_kategorii_edit']   : null;
     $id_dystansu    = (isset($_POST['id_dystansu_edit'])    && $_POST['id_dystansu_edit']    !== '') ? (int)$_POST['id_dystansu_edit']    : null;
     $id_fazy        = (isset($_POST['id_fazy_edit'])        && $_POST['id_fazy_edit']        !== '') ? (int)$_POST['id_fazy_edit']        : null;
+    $opis_w  = trim(isset($_POST['opis_wyscigu_edit']) ? $_POST['opis_wyscigu_edit'] : '');
     if ($id <= 0 || $nazwa === '' || $id_z <= 0) {
         $alert = "Niepoprawne dane przy edycji wyścigu.";
     } else {
-        $stmt = $conn->prepare("UPDATE wyscigi SET id_zawodow = ?, nazwa = ?, id_kategorii = ?, id_dystansu = ?, id_fazy = ? WHERE id = ?");
+        $stmt = $conn->prepare("UPDATE wyscigi SET id_zawodow = ?, nazwa = ?, id_kategorii = ?, id_dystansu = ?, id_fazy = ?, opis = ? WHERE id = ?");
         if ($stmt) {
-            $stmt->bind_param("isiiii", $id_z, $nazwa, $id_kategorii, $id_dystansu, $id_fazy, $id);
+            $stmt->bind_param("isiiisi", $id_z, $nazwa, $id_kategorii, $id_dystansu, $id_fazy, $opis_w, $id);
             if ($stmt->execute()) {
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
@@ -589,7 +591,7 @@ $res2 = $conn->query("
            w.id_kategorii, k.nazwa AS nazwa_kategorii,
            w.id_dystansu, d.nazwa AS nazwa_dystansu,
            w.id_fazy, f.nazwa AS nazwa_fazy,
-           f.kolejnosc AS faza_kolejnosc
+           f.kolejnosc AS faza_kolejnosc, w.opis
     FROM wyscigi w
     LEFT JOIN zawody z ON w.id_zawodow = z.id
     LEFT JOIN kategorie k ON w.id_kategorii = k.id
@@ -755,7 +757,14 @@ if ($res2) {
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">Nazwa wyścigu</label>
-                                    <input type="text" name="nazwa_wyscigu" class="form-control" required>
+                                    <div class="input-group">
+                                        <span class="input-group-text">Wyścig</span>
+                                        <input type="text" name="nazwa_wyscigu" id="addWyscigNazwa" class="form-control" value="<?php echo count($wyscigi) + 1; ?>" required>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Opis wyścigu <span class="text-muted">(opcjonalnie)</span></label>
+                                    <textarea name="opis_wyscigu" class="form-control" rows="2" placeholder="Krótka notatka do wyścigu…"></textarea>
                                 </div>
                                 <div class="row g-2 mb-3">
                                     <div class="col-md-4">
@@ -794,7 +803,7 @@ if ($res2) {
 
                     <div class="card shadow-sm mt-3">
                         <div class="card-header"><strong>Lista wyścigów</strong></div>
-                        <div class="card-body p-0">
+                        <div class="card-body p-0" style="max-height:520px; overflow-y:auto;">
                             <?php if (empty($wyscigi)): ?>
                                 <div class="p-3">Brak wyścigów.</div>
                             <?php else: ?>
@@ -806,7 +815,10 @@ if ($res2) {
                                     <?php foreach ($wyscigi as $w): ?>
                                         <tr class="wyscig-row" data-id="<?php echo (int)$w['id']; ?>" data-zawody="<?php echo (int)$w['id_zawodow']; ?>">
                                             <td class="text-muted small"><?php echo (int)$w['id']; ?></td>
-                                            <td><?php echo htmlspecialchars($w['nazwa_w']); ?></td>
+                                            <td>
+                                                <?php echo htmlspecialchars($w['nazwa_w']); ?>
+                                                <?php if (!empty($w['opis'])): ?><div class="text-muted" style="font-size:.75rem;margin-top:2px;"><?php echo htmlspecialchars($w['opis']); ?></div><?php endif; ?>
+                                            </td>
                                             <td><?php echo htmlspecialchars(isset($w['nazwa_z']) ? $w['nazwa_z'] : '—'); ?></td>
                                             <td>
                                                 <?php if (!empty($w['nazwa_kategorii'])): ?><span class="badge bg-primary-subtle text-primary-emphasis wyscig-meta-badge"><?php echo htmlspecialchars($w['nazwa_kategorii']); ?></span><?php endif; ?>
@@ -837,7 +849,8 @@ if ($res2) {
                                                             data-id="<?php echo (int)$w['id']; ?>" data-nazwa="<?php echo htmlspecialchars($w['nazwa_w'], ENT_QUOTES); ?>" data-idz="<?php echo (int)$w['id_zawodow']; ?>"
                                                             data-idkategorii="<?php echo $w['id_kategorii'] !== null ? (int)$w['id_kategorii'] : ''; ?>"
                                                             data-iddystansu="<?php echo $w['id_dystansu'] !== null ? (int)$w['id_dystansu'] : ''; ?>"
-                                                            data-idfazy="<?php echo $w['id_fazy'] !== null ? (int)$w['id_fazy'] : ''; ?>">Edytuj</button>
+                                                            data-idfazy="<?php echo $w['id_fazy'] !== null ? (int)$w['id_fazy'] : ''; ?>"
+                                                            data-opis="<?php echo htmlspecialchars($w['opis'] ?? '', ENT_QUOTES); ?>">Edytuj</button>
                                                     <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć wyścig?');">
                                                         <input type="hidden" name="action" value="delete_wyscig">
                                                         <input type="hidden" name="id_wyscigu_del" value="<?php echo (int)$w['id']; ?>">
@@ -1148,6 +1161,10 @@ if ($res2) {
                     <div class="mb-3">
                         <label class="form-label">Nazwa wyścigu</label>
                         <input type="text" name="nazwa_wyscigu_edit" id="editWyscigNazwa" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Opis wyścigu <span class="text-muted">(opcjonalnie)</span></label>
+                        <textarea name="opis_wyscigu_edit" id="editWyscigOpis" class="form-control" rows="2" placeholder="Krótka notatka do wyścigu…"></textarea>
                     </div>
                     <div class="row g-2">
                         <div class="col-md-4">
@@ -1598,6 +1615,8 @@ if ($res2) {
                 tsEditWyscigKategoria.setValue(button.getAttribute('data-idkategorii') || '', true);
                 tsEditWyscigDystans.setValue(button.getAttribute('data-iddystansu') || '', true);
                 tsEditWyscigFaza.setValue(button.getAttribute('data-idfazy') || '', true);
+                var opisEl = document.getElementById('editWyscigOpis');
+                if (opisEl) opisEl.value = button.getAttribute('data-opis') || '';
             });
         }
 
@@ -1924,6 +1943,18 @@ if ($res2) {
         }
 
     })();
+
+    // Na zmianie zawodów (przed reload) — ustaw 1 jako tymczasowy numer
+    (function () {
+        var inp = document.getElementById('addWyscigNazwa');
+        var rawZaw = document.getElementById('selectIdZawodow');
+        if (inp && rawZaw) {
+            rawZaw.addEventListener('change', function () {
+                inp.value = '1';
+            });
+        }
+    })();
+
 </script>
 </body>
 </html>

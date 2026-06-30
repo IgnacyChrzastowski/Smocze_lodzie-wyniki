@@ -26,6 +26,8 @@
             min-height: 62px;
             overflow: hidden;
             border-left: 5px solid #0d6efd;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
 
         /* ── Etykieta trybu ────────────────────────────────── */
@@ -43,13 +45,13 @@
             min-width: 112px;
             flex-shrink: 0;
         }
-        .belt--aktualny  .belt-label { background: #0d6efd; }
-        .belt--nastepny  .belt-label { background: #060b1c; border-right: 3px solid #0d6efd; color: #4d9fff; }
-        .belt--poprzedni .belt-label { background: #0c1530; color: #7aa8e0; }
+        .belt--aktualny  .belt-label { background: rgba(13, 110, 253, 0.78); }
+        .belt--nastepny  .belt-label { background: rgba(6, 11, 28, 0.62); border-right: 3px solid #0d6efd; color: #4d9fff; }
+        .belt--poprzedni .belt-label { background: rgba(12, 21, 48, 0.62); color: #7aa8e0; }
 
         /* ── Treść belki ───────────────────────────────────── */
         .belt-body {
-            background: linear-gradient(90deg, #0a1230 0%, #060d1e 100%);
+            background: linear-gradient(90deg, rgba(10,18,48,0.88) 0%, rgba(6,13,30,0.88) 100%);
             flex: 1;
             display: flex;
             align-items: center;
@@ -69,6 +71,19 @@
             flex-shrink: 0;
         }
 
+        /* ── Opis wyścigu ──────────────────────────────────── */
+        .belt-opis {
+            color: #8ab4e8;
+            font-size: .76rem;
+            font-weight: 400;
+            letter-spacing: .04em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 260px;
+            flex-shrink: 1;
+        }
+
         /* ── Separator ─────────────────────────────────────── */
         .belt-sep {
             width: 1px;
@@ -85,7 +100,7 @@
             overflow: hidden;
         }
         .belt-tag {
-            background: #0d1e42;
+            background: rgba(13, 30, 66, 0.60);
             color: #7ab8ff;
             padding: 4px 11px;
             font-size: .76rem;
@@ -93,19 +108,19 @@
             text-transform: uppercase;
             letter-spacing: .07em;
             white-space: nowrap;
-            border: 1px solid #1a3264;
+            border: 1px solid rgba(26, 50, 100, 0.55);
         }
 
         /* ── Brand fromair.pl (prawa strona) ───────────────── */
         .belt-brand {
-            background: #060b1c;
+            background: rgba(6, 11, 28, 0.62);
             display: flex;
             align-items: center;
             gap: 8px;
             padding: 0 18px;
             flex-shrink: 0;
             text-decoration: none;
-            border-left: 1px solid #0d2650;
+            border-left: 1px solid rgba(13, 38, 80, 0.55);
             min-width: 130px;
             justify-content: center;
         }
